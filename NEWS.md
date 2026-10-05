@@ -7,6 +7,10 @@ Atharv Tyagi.
   Metaphone codes. It now takes whole vectors and returns a data frame.
 * New `metaphone()` for the original single-code Metaphone algorithm.
 * New `sounds_like()` to compare two vectors of names.
+* New data set `us_surnames`, the 5000 most common surnames in the 2010
+  United States Census.
+* New vignette with worked examples of de-duplication, record linkage
+  and name search.
 * New `max_length` argument. The default keeps the full code. The old
   version cut codes at 32 characters.
 * New `by_word` argument to code each word of a name separately.

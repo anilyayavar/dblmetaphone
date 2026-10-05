@@ -32,6 +32,12 @@ R/metaphone.R
     with the GNU General Public License, version 3.
     https://www.apache.org/licenses/LICENSE-2.0
 
+data/us_surnames.rda
+    The 5000 most common surnames from "Frequently Occurring Surnames
+    from the 2010 Census" by the United States Census Bureau.
+    https://www.census.gov/topics/population/genealogy/data/2010_surnames.html
+    Works of the United States Government are in the public domain.
+
 tests/testthat/testdata/commons_double_metaphone.csv and the expected
 codes in tests/testthat/test-metaphone.R
     Taken from the test suite of Apache Commons Codec

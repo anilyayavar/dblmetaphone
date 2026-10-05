@@ -1,33 +1,44 @@
 # fullmetaphone
 
-Full-length Metaphone and Double Metaphone phonetic codes for R.
+Full-length [Metaphone](https://en.wikipedia.org/wiki/Metaphone) and
+Double Metaphone phonetic codes for R.
 
-Phonetic codes give names that sound alike the same code, even when they
-are spelled differently. They are useful for finding duplicate payees,
-beneficiaries or vendors, and for linking records across files.
+People spell the same name in different ways. Meyer, Meier, Mayer and
+Maier are one surname. Catherine and Katherine are one first name. Exact
+comparison misses these, which makes de-duplication, record linkage and
+name search unreliable. Phonetic algorithms turn each name into a code
+for its sound, so that names which sound alike can be matched.
 
-Most implementations, including `PGRdup::DoubleMetaphone()`, keep only
-the first four characters of each code. That is too short for long
-names. **fullmetaphone** returns the codes in full.
+**fullmetaphone** implements the two algorithms of Lawrence Philips.
+
+* **Metaphone** (1990) gives one code per name, following the rules of
+  English spelling.
+* **Double Metaphone** (2000) handles names of many language origins and
+  gives a second code where a name has two common pronunciations, so
+  that Smith matches Schmidt and Wasserman matches Vasserman.
+
+Most implementations, including `PGRdup::DoubleMetaphone()`, cut the
+codes to four characters. That is often too short. With full-length
+codes, long and multi-part names keep their identity.
 
 ```r
 library(fullmetaphone)
 
-double_metaphone(c("Venkatesh", "Venkataraman", "Venkatraman"), max_length = 4)
+people <- c("Christopher Anderson", "Christina Andrews")
+double_metaphone(people, max_length = 4)
 #>   primary secondary
-#> 1    FNKT      FNKT
-#> 2    FNKT      FNKT
-#> 3    FNKT      FNKT
+#> 1    KRST      KRST
+#> 2    KRST      KRST
 
-double_metaphone(c("Venkatesh", "Venkataraman", "Venkatraman"))
-#>   primary secondary
-#> 1   FNKTX     FNKTX
-#> 2 FNKTRMN   FNKTRMN
-#> 3 FNKTRMN   FNKTRMN
+double_metaphone(people)
+#>       primary   secondary
+#> 1 KRSTFRNTRSN KRSTFRNTRSN
+#> 2   KRSTNNTRS   KRSTNNTRS
 ```
 
-With four characters all three names look alike. With full codes only
-the two spellings of Venkataraman match.
+In a test with almost 5000 synthetic full names, four-character codes
+left fewer than 900 distinct codes. Full-length codes left more than
+4200.
 
 ## Installation
 
@@ -35,61 +46,72 @@ From GitHub, until the package is on CRAN.
 
 ```r
 # install.packages("remotes")
-remotes::install_github("anilyayavar/dblmetaphone")
+remotes::install_github("anilyayavar/dblmetaphone", build_vignettes = TRUE)
 ```
 
-## What it does
+## Usage
 
 | Function | What it gives |
 |---|---|
-| `metaphone(x)` | One code per name, from the original Metaphone algorithm (Philips 1990). |
-| `double_metaphone(x)` | A data frame with a primary and a secondary code per name, from Double Metaphone (Philips 2000). |
+| `metaphone(x)` | One Metaphone code per name. |
+| `double_metaphone(x)` | A data frame with a primary and a secondary Double Metaphone code per name. |
 | `sounds_like(x, y)` | `TRUE` where two names share a code. |
-
-All three take these arguments.
-
-* `max_length` sets the longest code to keep. The default `Inf` keeps
-  the full code. Use `4` for the traditional short codes.
-* `by_word = TRUE` codes each word of a name separately, so
-  "Ramesh Kumar Sharma" gives `"RMX KMR XRM"`.
+| `us_surnames` | The 5000 most common surnames in the 2010 US Census, for examples and testing. |
 
 ```r
-metaphone(c("Knight", "Night", "Agarwal", "Agrawal"))
-#> [1] "NT"    "NT"    "AKRWL" "AKRWL"
-
 sounds_like("Smith", c("Schmidt", "Smyth", "Jones"))
 #> [1]  TRUE  TRUE FALSE
+
+# Search a register by sound
+us_surnames[sounds_like("Schneider", us_surnames$surname), ]
+#>        surname rank  count
+#> 165     Snyder  165 160262
+#> 312  Schneider  312 101290
+#> 1088    Snider 1088  32148
+#> 3906    Sander 3906   9090
+#> 4077   Santoro 4076   8713
 ```
 
-Missing values stay missing. Accented Latin letters are read as plain
-letters, and punctuation is ignored. See the vignette,
-`vignette("fullmetaphone")`, for a worked de-duplication example and the
-limits of phonetic matching.
+All functions take a `max_length` argument (default `Inf`, use `4` for
+the traditional codes) and a `by_word` argument to encode each word of a
+name separately. Missing values stay missing, accented Latin letters are
+read as plain letters, and punctuation is ignored.
 
-## How it was checked
+The vignette, `vignette("fullmetaphone")`, explains the algorithms and
+works through de-duplication, record linkage and name search, including
+the limits of phonetic matching.
 
-* The four-character Double Metaphone codes match all 1221 reference
-  names in the Apache Commons Codec test suite.
-* On 5000 synthetic Indian names, the four-character codes match
-  `PGRdup::DoubleMetaphone()` for 4995 names. The other 5 differ
-  because of two small bugs in the C code that PGRdup uses, in the
-  rules for "GN" (as in "Wagner") and "SC" (as in "Frascella").
-  This package follows the original algorithm there.
-* The Metaphone codes match the Apache Commons Codec test cases.
+## Validation
+
+* Cut to four characters, the Double Metaphone codes agree with all 1221
+  reference names in the test suite of
+  [Apache Commons Codec](https://commons.apache.org/proper/commons-codec/).
+* The Metaphone codes agree with the Apache Commons Codec test cases.
+* On 5000 synthetic names, the four-character codes agree with
+  `PGRdup::DoubleMetaphone()` for 4995 names. The other five differ
+  because of two small errors in the C code that 'PGRdup' uses, in the
+  rules for "GN" (as in Wagner) and "SC" (as in Frascella). This package
+  follows the published algorithm there.
 
 ## Credits
 
-* **Lawrence Philips** designed Metaphone (1990) and Double Metaphone
-  (2000) and published the original code.
+* **Lawrence Philips** designed Metaphone and Double Metaphone and
+  published the original code.
 * The Double Metaphone rules follow the C implementation by **Maurice
-  Aubrey**, with fixes by **Kevin Atkinson**.
-* The **PGRdup** package by J. Aravind, J. Radhamani, Kalyani
-  Srinivasan, B. Ananda Subhash and co-authors brought Double Metaphone
-  to R and inspired this package. Run `citation("PGRdup")` to cite it.
+  Aubrey** in the Perl module
+  [Text::DoubleMetaphone](https://metacpan.org/pod/Text::DoubleMetaphone),
+  with fixes by **Kevin Atkinson**.
+* The [PGRdup](https://CRAN.R-project.org/package=PGRdup) package by
+  J. Aravind, J. Radhamani, Kalyani Srinivasan, B. Ananda Subhash and
+  co-authors first brought Double Metaphone to R and inspired this
+  package. Run `citation("PGRdup")` to cite it.
 * The Metaphone rules and the test data come from **Apache Commons
   Codec**.
-* The first version of this package was written by **Atharv Tyagi**,
-  under the guidance of **Anil Kumar Goyal**. Both maintain it.
+* The `us_surnames` data come from the
+  [United States Census Bureau](https://www.census.gov/topics/population/genealogy/data/2010_surnames.html)
+  and are in the public domain.
+* The first version of this package was written by **Atharv Tyagi**
+  under the guidance of **Anil Kumar Goyal**, who maintain it together.
 
 See `inst/COPYRIGHTS` for details.
 
@@ -100,7 +122,8 @@ GPL-3.
 ## References
 
 Philips, L. (1990). Hanging on the metaphone. *Computer Language*,
-7(12), 39-44.
+7(12), 38-43.
 
 Philips, L. (2000). The double metaphone search algorithm. *C/C++ Users
 Journal*, 18(6), 38-43.
+[Archived copy](https://web.archive.org/web/20250702064845/https://drdobbs.com/the-double-metaphone-search-algorithm/184401251).

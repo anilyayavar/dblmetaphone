@@ -1,0 +1,31 @@
+#' Common surnames in the United States
+#'
+#' The 5000 most common surnames recorded in the 2010 United States
+#' Census, with their frequencies. The list mixes names of English,
+#' German, Irish, Italian, Polish, Spanish, Portuguese, Chinese,
+#' Vietnamese, Korean, Indian and many other origins, which makes it a
+#' convenient test bed for phonetic matching.
+#'
+#' The Census Bureau publishes surnames in capital letters. Here they are
+#' converted to title case with [tools::toTitleCase()], so "MCDONALD"
+#' becomes "Mcdonald". The capitalisation has no effect on the codes.
+#'
+#' @format A data frame with 5000 rows and 3 columns.
+#' \describe{
+#'   \item{surname}{The surname, in title case.}
+#'   \item{rank}{Rank by frequency. Surnames with equal counts share a
+#'     rank.}
+#'   \item{count}{Number of people in the 2010 Census with this surname.}
+#' }
+#'
+#' @source United States Census Bureau, "Frequently Occurring Surnames
+#'   from the 2010 Census",
+#'   <https://www.census.gov/topics/population/genealogy/data/2010_surnames.html>.
+#'   Data published by the Census Bureau are in the public domain.
+#'
+#' @examples
+#' head(us_surnames)
+#'
+#' # Surnames that sound like Meyer, with how common each one is
+#' us_surnames[sounds_like("Meyer", us_surnames$surname), ]
+"us_surnames"

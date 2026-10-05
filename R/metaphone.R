@@ -10,8 +10,8 @@
 #'
 #' The rules follow the Metaphone implementation in Apache Commons Codec,
 #' a widely used reference version. Unlike Double Metaphone, Metaphone
-#' keeps a leading vowel as itself, so "Anil" gives `"ANL"` and "Ekta"
-#' gives `"EKT"`.
+#' keeps a leading vowel as itself, so "Anna" gives `"AN"` and "Emma"
+#' gives `"EM"`.
 #'
 #' @inheritSection double_metaphone Several words
 #' @inheritParams double_metaphone
@@ -29,19 +29,23 @@
 #'
 #' @references
 #' Philips, L. (1990). Hanging on the metaphone. *Computer Language*,
-#' 7(12), 39-44.
+#' 7(12), 38-43.
 #'
-#' @seealso [double_metaphone()] for the improved two-code algorithm, and
-#'   [sounds_like()] to compare two sets of names.
+#' Apache Commons Codec, the Metaphone class.
+#' \url{https://commons.apache.org/proper/commons-codec/}
+#'
+#' @seealso [double_metaphone()] for the improved two-code algorithm,
+#'   [sounds_like()] to compare two sets of names, and
+#'   `vignette("fullmetaphone")` for worked examples.
 #'
 #' @examples
-#' metaphone(c("Knight", "Night", "Thompson", "Agarwal", "Aggarwal"))
+#' metaphone(c("Knight", "Night", "Philip", "Filip", "Catherine", "Katherine"))
 #'
 #' # Full codes against the traditional four characters
-#' metaphone("Venkataraman")
-#' metaphone("Venkataraman", max_length = 4)
+#' metaphone(c("Rosenberg", "Rosenbaum"))
+#' metaphone(c("Rosenberg", "Rosenbaum"), max_length = 4)
 #'
-#' metaphone("Ramesh Kumar Sharma", by_word = TRUE)
+#' metaphone("Jean Pierre Dubois", by_word = TRUE)
 #' @export
 metaphone <- function(x, max_length = Inf, by_word = FALSE) {
   check_args(max_length, by_word)

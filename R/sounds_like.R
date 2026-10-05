@@ -18,17 +18,23 @@
 #'
 #' @return A logical vector. `NA` where either name is missing.
 #'
-#' @seealso [double_metaphone()], [metaphone()]
+#' @seealso [double_metaphone()], [metaphone()], and
+#'   `vignette("fullmetaphone")` for worked examples of de-duplication and
+#'   record linkage.
 #'
 #' @examples
-#' sounds_like("Agarwal", c("Aggarwal", "Agrawal", "Agnihotri"))
+#' sounds_like("Meyer", c("Meier", "Mayer", "Maier", "Miller"))
 #'
 #' sounds_like("Smith", "Schmidt")
 #' sounds_like("Smith", "Schmidt", method = "metaphone")
 #'
 #' # Full codes tell long names apart. Four-character codes do not.
-#' sounds_like("Venkatesh", "Venkataraman")
-#' sounds_like("Venkatesh", "Venkataraman", max_length = 4)
+#' sounds_like("Christopher Anderson", "Christina Andrews")
+#' sounds_like("Christopher Anderson", "Christina Andrews", max_length = 4)
+#'
+#' # Search a register of names
+#' hits <- us_surnames[sounds_like("Schneider", us_surnames$surname), ]
+#' head(hits)
 #' @export
 sounds_like <- function(x, y, method = c("double", "metaphone"),
                         max_length = Inf, by_word = FALSE) {

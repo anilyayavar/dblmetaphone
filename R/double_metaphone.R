@@ -7,21 +7,24 @@
 #'
 #' Most implementations, including `PGRdup::DoubleMetaphone()`, keep only
 #' the first four characters of each code. Here the codes are kept in full
-#' by default, so "Venkatesh" and "Venkataraman" no longer get the same
-#' code. Set `max_length = 4` to get the traditional short codes.
+#' by default, so "Christopher Anderson" and "Christina Andrews" no longer
+#' get the same code. Set `max_length = 4` to get the traditional short
+#' codes.
 #'
-#' The rules follow the C implementation by Maurice Aubrey, which is based
-#' on Philips' own C++ code. That is the version used by most other
-#' software.
+#' The rules follow the C implementation by Maurice Aubrey in the Perl
+#' module Text::DoubleMetaphone, which is based on Philips' own C++ code
+#' and is the version used by most other software. Cut to four
+#' characters, the codes agree with the reference data of Apache Commons
+#' Codec.
 #'
 #' @section Preparing the text:
 #' Letters are changed to capitals, and common accented Latin letters are
 #' replaced by plain ones, so a u with an umlaut is read as U. The C with
 #' a cedilla and the N with a tilde keep their own Double Metaphone rules
-#' and are read as S and N. Apostrophes are
-#' removed, so "O'Brien" is read as "OBRIEN". Any other character that is
-#' not a letter, such as a digit, hyphen or full stop, is treated as a
-#' space. Names written in other scripts, such as Devanagari, should be
+#' and are read as S and N. Apostrophes are removed, so "O'Brien" is read
+#' as "OBRIEN". Any other character that is not a letter, such as a digit,
+#' hyphen or full stop, is treated as a space. Names written in other
+#' scripts, such as Arabic, Chinese, Cyrillic or Devanagari, should be
 #' transliterated to Latin letters first.
 #'
 #' @section Several words:
@@ -29,9 +32,10 @@
 #' original algorithm does. Spaces are kept and some rules use them, for
 #' example "San Jacinto" or "Van Damme". The code then runs the words
 #' together. Set `by_word = TRUE` to encode each word on its own instead.
-#' The word codes are then joined with single spaces, so "Ramesh Kumar"
-#' gives `"RMX KMR"`. This makes it easy to compare names whose parts are
-#' written in a different order.
+#' The word codes are then joined with single spaces, so "Maria Gonzalez"
+#' gives `"MR KNSLS"`. This makes it easy to compare the parts of names
+#' separately, or to compare names whose parts are written in a different
+#' order.
 #'
 #' @param x A character vector of names or words. Factors are accepted.
 #' @param max_length The largest number of characters to keep in each
@@ -48,23 +52,29 @@
 #' @references
 #' Philips, L. (2000). The double metaphone search algorithm. *C/C++
 #' Users Journal*, 18(6), 38-43.
+#' \url{https://web.archive.org/web/20250702064845/https://drdobbs.com/the-double-metaphone-search-algorithm/184401251}
 #'
-#' @seealso [metaphone()] for the original single-code algorithm, and
-#'   [sounds_like()] to compare two sets of names.
+#' Aubrey, M. Text::DoubleMetaphone, a Perl module.
+#' \url{https://metacpan.org/pod/Text::DoubleMetaphone}
+#'
+#' @seealso [metaphone()] for the original single-code algorithm,
+#'   [sounds_like()] to compare two sets of names, and
+#'   `vignette("fullmetaphone")` for worked examples.
 #'
 #' @examples
-#' double_metaphone(c("Smith", "Schmidt", "Thompson", "Agarwal", "Aggarwal"))
+#' double_metaphone(c("Smith", "Schmidt", "Meyer", "Maier", "Xavier"))
 #'
 #' # Full codes keep long names apart
-#' double_metaphone(c("Venkatesh", "Venkataraman"))
-#' double_metaphone(c("Venkatesh", "Venkataraman"), max_length = 4)
+#' people <- c("Christopher Anderson", "Christina Andrews")
+#' double_metaphone(people)
+#' double_metaphone(people, max_length = 4)
 #'
 #' # Encode each part of a name separately
-#' double_metaphone("Ramesh Kumar Sharma", by_word = TRUE)
+#' double_metaphone("Maria Gonzalez Lopez", by_word = TRUE)
 #'
 #' # Add the codes to a data frame
-#' vendors <- data.frame(name = c("Shree Ganesh Traders", "Sri Ganesh Trader"))
-#' cbind(vendors, double_metaphone(vendors$name))
+#' staff <- data.frame(name = c("Stephen Phillips", "Steven Philips"))
+#' cbind(staff, double_metaphone(staff$name))
 #' @export
 double_metaphone <- function(x, max_length = Inf, by_word = FALSE) {
   check_args(max_length, by_word)

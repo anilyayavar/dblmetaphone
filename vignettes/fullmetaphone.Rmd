@@ -1,8 +1,10 @@
 ---
-title: "Getting started with fullmetaphone"
-output: rmarkdown::html_vignette
+title: "Phonetic matching of names with fullmetaphone"
+output:
+  rmarkdown::html_vignette:
+    toc: true
 vignette: >
-  %\VignetteIndexEntry{Getting started with fullmetaphone}
+  %\VignetteIndexEntry{Phonetic matching of names with fullmetaphone}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -15,161 +17,426 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 library(fullmetaphone)
 ```
 
-## Why phonetic codes
+## The problem
 
-The same name is often spelled in many ways. Agarwal, Aggarwal and
-Agrawal are one surname. Shree and Sri are one word. An exact match on a
-name column misses all of these.
+Names are written down by people, and people spell the same name in
+different ways. Meyer, Meier, Mayer and Maier are one German surname.
+Catherine and Katherine are one first name. Stephen Phillips and Steven
+Philips may well be one person. Any join, lookup or duplicate check that
+relies on exact equality of names will miss these.
 
-A phonetic code turns a name into a short string that stands for its
-sound. Names that sound alike get the same code.
+Phonetic algorithms address this by turning a word into a code that
+stands for how it sounds. Words that sound alike get the same code, so
+records can be compared by code instead of by spelling. The idea goes
+back to [Soundex](https://en.wikipedia.org/wiki/Soundex), patented in
+1918 and used for the United States Census. Lawrence Philips improved on
+it with [Metaphone](https://en.wikipedia.org/wiki/Metaphone) in 1990,
+which follows the rules of English spelling far more closely. In 2000 he
+published
+[Double Metaphone](https://web.archive.org/web/20250702064845/https://drdobbs.com/the-double-metaphone-search-algorithm/184401251),
+which also handles names of German, Slavic, Italian, Spanish, French,
+Greek and Chinese origin, and which gives a second code where a name has
+two common pronunciations.
+
+This package provides both algorithms in R. Its main difference from
+other implementations is that the codes are kept in full, instead of
+being cut to four characters. The sections below explain why that
+matters and show how to use the codes in common data tasks.
+
+## Getting started
+
+The package has three functions.
+
+| Function | Returns |
+|---|---|
+| `metaphone(x)` | A character vector with one Metaphone code per element of `x`. |
+| `double_metaphone(x)` | A data frame with a `primary` and a `secondary` Double Metaphone code per element of `x`. |
+| `sounds_like(x, y)` | A logical vector, `TRUE` where `x` and `y` share a code. |
 
 ```{r}
-metaphone(c("Agarwal", "Aggarwal", "Agrawal"))
+names <- c("Meyer", "Meier", "Mayer", "Catherine", "Katherine",
+           "Smith", "Schmidt")
+metaphone(names)
+double_metaphone(names)
 ```
 
-## Two algorithms
+All functions accept character vectors of any length and return one
+result per element. Missing values give `NA`. Each distinct value is
+encoded only once, so columns with many repeats are fast.
 
-`metaphone()` uses the original Metaphone algorithm of Lawrence Philips
-(1990). It gives one code for each name.
+## How the codes are built
 
-`double_metaphone()` uses Philips' later Double Metaphone algorithm
-(2000). It gives two codes. The primary code is the most likely
-pronunciation. The secondary code allows for another common one.
+A code keeps the consonant sounds of a word and drops most vowels. Some
+rules are easy to recognise. A "ph" sounds like F, initial "kn", "gn" and
+"wr" lose their silent first letter, and "th" becomes the digit `0`
+because it looks like the Greek letter theta.
 
 ```{r}
-double_metaphone(c("Smith", "Schmidt", "Jose", "Michael"))
+rules <- c("Philip", "Knight", "Wright", "Gnome", "Thomas", "Laugh",
+           "Dumb", "Edge", "Xavier")
+data.frame(word = rules, metaphone = metaphone(rules),
+           double_metaphone(rules))
 ```
 
-Smith and Schmidt share the code `XMT`, one as secondary and one as
-primary. Double Metaphone treats two names as alike when any of their
-codes match. `sounds_like()` does this check for you.
+Double Metaphone has many more rules than Metaphone, mostly for names
+from other languages. Where a name is pronounced differently in its
+language of origin and in English, the secondary code gives the second
+reading.
 
 ```{r}
-sounds_like("Smith", "Schmidt")
+foreign <- c("Schmidt", "Michael", "Jose", "Tagliaro", "Czerny",
+             "Wasserman", "Zhao", "Breaux")
+data.frame(word = foreign, double_metaphone(foreign))
+```
+
+So "Schmidt" has the primary code `XMT`, as it is said in German, and the
+secondary code `SMT`, as an English speaker might say it. "Smith" has the
+codes `SM0` and `XMT`. The two names share `XMT`, so they are treated as
+possible matches. Philips recommended exactly this comparison. Two names
+match if any code of one equals any code of the other, and
+`sounds_like()` applies it.
+
+```{r}
+sounds_like("Smith", c("Schmidt", "Smyth", "Smythe", "Jones"))
+sounds_like("Wasserman", "Vasserman")
+```
+
+The original Metaphone gives only one code, so it is stricter.
+
+```{r}
 sounds_like("Smith", "Schmidt", method = "metaphone")
 ```
 
 ## Why full-length codes
 
-Most implementations keep only the first four characters of a code. For
-short Western surnames that is enough. For long names it is not, and
-Indian names are often long.
+Philips' original programs, and most later implementations such as
+`PGRdup::DoubleMetaphone()`, return only the first four characters of
+each code. Four characters were enough for building search indexes of
+English surnames in the 1990s. They are not enough for many tasks today,
+because different names that merely start alike end up with the same
+code.
+
+The package includes `us_surnames`, the 5000 most common surnames in the
+2010 United States Census.
 
 ```{r}
-names <- c("Venkatesh", "Venkataraman", "Venkatraman")
-double_metaphone(names, max_length = 4)
-double_metaphone(names)
+head(us_surnames)
+codes_full <- double_metaphone(us_surnames$surname)$primary
+codes_four <- double_metaphone(us_surnames$surname, max_length = 4)$primary
+length(unique(codes_full))
+length(unique(codes_four))
 ```
 
-With four characters, all three names look the same. With full codes,
-Venkataraman and Venkatraman still match, as they should. Venkatesh is
-now kept apart.
+Even for single surnames, which are short, cutting the codes to four
+characters removes almost 400 distinct codes, merging surnames that
+sound different. Here is one four-character code and the surnames
+behind it.
 
-The difference adds up quickly. In one test set of 5000 synthetic Indian
-names, four-character codes gave about 2700 distinct primary codes. Full
-codes gave about 4950. So four-character codes would have flagged many
-pairs of different people as possible duplicates.
+```{r}
+group <- codes_four == "ALTR"
+data.frame(surname = us_surnames$surname[group],
+           four = codes_four[group],
+           full = codes_full[group])
+```
 
-Use `max_length = 4` whenever you need the traditional short codes, for
+With four characters, Walter, Waldron, Aldrich and Alderman look alike.
+With full codes, only Walter, Wilder and Elder remain together.
+
+The effect is much stronger for full names, which are what most record
+linkage tasks deal with. The example below pairs common first names from
+several countries with the census surnames.
+
+```{r}
+first_names <- c("James", "Mary", "Robert", "Patricia", "John",
+                 "Jennifer", "Michael", "Linda", "David", "Elizabeth",
+                 "Christopher", "Sarah", "Maria", "Jose", "Juan",
+                 "Mohammed", "Ahmed", "Wei", "Anna", "Sophie", "Lukas",
+                 "Pierre", "Giovanni", "Olga", "Katarzyna", "Priya")
+set.seed(2026)
+people <- unique(paste(sample(first_names, 5000, replace = TRUE),
+                       sample(us_surnames$surname, 5000, replace = TRUE)))
+length(people)
+length(unique(double_metaphone(people)$primary))
+length(unique(double_metaphone(people, max_length = 4)$primary))
+```
+
+With four-character codes, the code of a full name is little more than
+the code of the first name. Almost 5000 different people share fewer
+than 900 codes, so on average about five or six unrelated people would
+be flagged as one. Full codes keep most of them apart.
+
+```{r}
+cr <- c("Christopher Anderson", "Christina Andrews", "Christopher Andersen")
+data.frame(name = cr,
+           four = double_metaphone(cr, max_length = 4)$primary,
+           full = double_metaphone(cr)$primary)
+```
+
+Use `max_length = 4` when you need the traditional short codes, for
 example to compare with results from other software.
+
+## Example 1. Finding duplicate records
+
+A typical task is to find records in one table that may describe the
+same person. In this small contact list, several people were entered
+twice with different spellings.
+
+```{r}
+contacts <- data.frame(
+  id    = 1:12,
+  first = c("Catherine", "Katherine", "Stephen", "Steven", "Mohammed",
+            "Muhammad", "Jeffrey", "Geoffrey", "Anne", "Ann", "Sean",
+            "Shaun"),
+  last  = c("Smith", "Smyth", "Phillips", "Philips", "Ali", "Aly",
+            "Wasserman", "Vasserman", "Thompson", "Thomson", "O'Neill",
+            "O'Neil"),
+  city  = c("Leeds", "Leeds", "Boston", "Boston", "Toronto", "Toronto",
+            "Chicago", "Chicago", "Sydney", "Sydney", "Dublin", "Dublin")
+)
+```
+
+Comparing every record with every other record is fine for a few
+hundred rows, but for large tables it is too slow. The usual approach,
+called blocking, first groups records that share a cheap key and only
+compares records within a group. A natural first try is to use the
+primary code of the surname as the key, together with the city.
+
+```{r}
+contacts$key <- paste(double_metaphone(contacts$last)$primary,
+                      contacts$city)
+pairs <- merge(contacts, contacts, by = "key", suffixes = c("_a", "_b"))
+pairs <- pairs[pairs$id_a < pairs$id_b, ]
+pairs$first_match <- sounds_like(pairs$first_a, pairs$first_b)
+pairs[, c("first_a", "last_a", "first_b", "last_b", "first_match")]
+```
+
+Four pairs share a block, and in three of them the first names also
+sound alike. The Wasserman pair is missing, because "Wasserman" and
+"Vasserman" have different primary codes, `ASRMN` and `FSRMN`. They
+share only a secondary code. A key built from one code cannot see
+that, while `sounds_like()` compares all four combinations of primary
+and secondary codes. So a better plan is to block on something simpler,
+here the city, and to compare names with `sounds_like()` inside each
+block.
+
+```{r}
+pairs <- merge(contacts, contacts, by = "city", suffixes = c("_a", "_b"))
+pairs <- pairs[pairs$id_a < pairs$id_b, ]
+same_person <- sounds_like(pairs$last_a, pairs$last_b) &
+  sounds_like(pairs$first_a, pairs$first_b)
+pairs[same_person, c("id_a", "first_a", "last_a", "id_b", "first_b", "last_b")]
+```
+
+Now four of the six planted duplicates are found. Jeffrey and Geoffrey
+match through the shared code `JFR`. The other two pairs show the
+limits of the method. "Thompson" and "Thomson" get different codes,
+`TMPSN` and `TMSN`, because the P in Thompson is coded although it is
+barely pronounced. "Sean" and "Shaun" differ because the Irish "Se" is
+read by the English rule as S. Phonetic codes reduce the problem of
+spelling variation, but they do not remove it. The section on good
+practice below suggests ways to catch more.
+
+## Example 2. Linking two tables
+
+The same technique links records across two sources, for example a
+membership list and a donations file kept by different staff.
+
+```{r}
+members <- data.frame(
+  member_id = c("M1", "M2", "M3", "M4", "M5"),
+  name = c("Jon Schmidt", "Maria Gonzalez", "Peter Kowalski",
+           "Claire Dubois", "Hans Meyer")
+)
+donations <- data.frame(
+  receipt = c("R1", "R2", "R3", "R4", "R5", "R6"),
+  donor = c("John Smith", "Mariah Gonzales", "Piotr Kowalsky",
+            "Clare Du Bois", "Hans Maier", "Helen Mayer"),
+  amount = c(50, 120, 75, 200, 30, 90)
+)
+```
+
+Split the names into first and last names, then block on the surname
+code.
+
+```{r}
+split_name <- function(x) {
+  parts <- strsplit(x, " ", fixed = TRUE)
+  data.frame(first = vapply(parts, `[`, "", 1),
+             last  = vapply(parts, function(p) paste(p[-1], collapse = " "), ""))
+}
+members   <- cbind(members, split_name(members$name))
+donations <- cbind(donations, split_name(donations$donor))
+
+members$block   <- double_metaphone(members$last)$primary
+donations$block <- double_metaphone(donations$last)$primary
+candidates <- merge(members, donations, by = "block")
+candidates[, c("name", "donor", "block")]
+```
+
+Joining on the primary code alone misses names whose primary codes
+differ but whose secondary codes match, such as "Schmidt" and "Smith".
+As in the first example, it is more thorough to compare names with
+`sounds_like()`, which checks all four combinations of codes. With small
+tables every member can be compared with every donor. With large ones,
+block on something broader first, such as the first letter of the
+surname or a postcode.
+
+```{r}
+all_pairs <- merge(members, donations, by = NULL)
+all_pairs <- all_pairs[sounds_like(all_pairs$last.x, all_pairs$last.y) &
+                       sounds_like(all_pairs$first.x, all_pairs$first.y), ]
+all_pairs[, c("member_id", "name", "receipt", "donor", "amount")]
+```
+
+Here `merge(..., by = NULL)` forms all combinations, which is only
+sensible for small tables. To rank the candidate pairs, a string
+distance such as the generalised Levenshtein distance from base R's
+`adist()` is a useful second opinion.
+
+```{r}
+all_pairs$distance <- diag(adist(all_pairs$name, all_pairs$donor))
+all_pairs[order(all_pairs$distance),
+          c("name", "donor", "distance")]
+```
+
+Small distances suggest near-identical spellings. Larger ones, such as
+"Jon Schmidt" and "John Smith", are worth a closer look by a person
+before the records are merged.
+
+## Example 3. Searching a register by sound
+
+Genealogists, call centres and archivists often need to look up a name
+that was heard rather than read. `sounds_like()` with a single name on
+one side searches a whole register at once.
+
+```{r}
+hits <- us_surnames[sounds_like("Meyer", us_surnames$surname), ]
+head(hits[order(-hits$count), ], 10)
+```
+
+The search finds the expected spellings, Meyer, Mayer, Meier, Maier and
+Moyer, but also Moore, Murray and others. Double Metaphone drops vowels,
+so all names with an M followed by an R sound fall together. Full-length
+codes keep longer names apart, but for short names a phonetic search
+gives a candidate list to review, not a final answer. Adding a string
+distance helps to put the closest spellings first.
+
+```{r}
+hits$distance <- adist("Meyer", hits$surname)[1, ]
+head(hits[order(hits$distance, -hits$count), ], 6)
+```
 
 ## Names with several words
 
-By default the whole name is coded as one string, as in the original
-algorithm. Set `by_word = TRUE` to code each word on its own. The word
-codes are joined with spaces.
+By default the whole text is encoded as one string, exactly as the
+original algorithm does. Spaces are kept while encoding, and a few rules
+depend on them, for example the Spanish "San" or the Dutch and German
+"Van" and "Von". The resulting code runs the words together.
+
+With `by_word = TRUE` each word is encoded separately and the codes are
+joined by spaces. This keeps the structure of the name and lets you
+compare the parts on their own.
 
 ```{r}
-double_metaphone("Ramesh Kumar Sharma")
-double_metaphone("Ramesh Kumar Sharma", by_word = TRUE)
+double_metaphone("Maria Gonzalez Lopez")
+double_metaphone("Maria Gonzalez Lopez", by_word = TRUE)
 ```
 
-Word-by-word codes help when the parts of a name can come in a different
-order. You can sort the word codes before comparing them.
+Whole-string codes are useful when the spacing of a name varies, as in
+"Du Bois" and "Dubois". Word-by-word codes are useful when the order of
+the parts varies, as in many registers that record the family name
+first. Sorting the word codes makes the comparison independent of order.
 
 ```{r}
-codes <- metaphone(c("Ramesh Kumar", "Kumar Ramesh"), by_word = TRUE)
-codes
+sounds_like("Pierre Dubois", "Pierre Du Bois")
+codes <- metaphone(c("Wei Zhang", "Zhang Wei"), by_word = TRUE)
 sorted <- vapply(strsplit(codes, " "),
-                 function(w) paste(sort(w), collapse = " "),
-                 character(1))
-sorted[1] == sorted[2]
+                 function(w) paste(sort(w), collapse = " "), "")
+sorted
 ```
 
-## A small de-duplication example
+## Working with data frames and the tidyverse
 
-Here is a list of payees with some planted near-duplicates.
+`double_metaphone()` returns a data frame, so its result can be bound to
+an existing table with `cbind()`.
 
 ```{r}
-payees <- data.frame(
-  id = 1:10,
-  name = c("Shree Ganesh Traders", "Shri Ganesh Traders",
-           "Venkataraman Enterprises", "Venkatraman Enterprises",
-           "Venkatesh Enterprises",
-           "Agarwal and Sons", "Agrawal and Sons",
-           "Mohan Lal", "Mohan Laal", "Sohan Lal")
-)
-payees <- cbind(payees, double_metaphone(payees$name, by_word = TRUE))
-payees
+staff <- data.frame(name = c("Stephen Phillips", "Steven Philips"))
+cbind(staff, double_metaphone(staff$name))
 ```
 
-Group the rows by their primary code and keep the groups with more than
-one row.
+In 'dplyr', a data frame returned inside `mutate()` without a name is
+unpacked into separate columns.
 
-```{r}
-groups <- split(payees$id, payees$primary)
-groups[lengths(groups) > 1]
+```{r, eval = requireNamespace("dplyr", quietly = TRUE)}
+library(dplyr, warn.conflicts = FALSE)
+mutate(staff,
+       double_metaphone(name),
+       metaphone = metaphone(name))
 ```
 
-Four pairs are flagged. Shree and Shri, Venkataraman and Venkatraman,
-Agarwal and Agrawal, and Lal and Laal. Venkatesh Enterprises and Sohan
-Lal are rightly left alone. A real review would also compare the
-secondary codes, and would then check each flagged pair by hand.
+## Good practice and limits
 
-## What phonetic codes miss
+Phonetic codes work best as one step in a matching process, not as the
+whole of it. The following points come up in almost every real project.
 
-Phonetic codes are not magic. They follow English spelling rules, and
-some variations defeat them.
+- **Standardise first.** Remove titles and suffixes such as Mr, Dr, Jr
+  and Ltd, and expand common abbreviations, before computing codes.
+  Codes cannot know that "St" means Saint or Street.
+- **Handle nicknames separately.** Bill and William, or Peggy and
+  Margaret, do not sound alike. A lookup table of nicknames is needed
+  for these.
+- **Expect some misses.** As shown above, Thompson and Thomson or Sean
+  and Shaun get different codes. Combining a phonetic key with a string
+  distance catches many of these.
+- **Expect some false matches.** Short codes such as `MR` are shared by
+  many names. Confirm candidate matches with other fields, such as a
+  date of birth, address or identification number.
+- **Use Latin letters.** The algorithms are designed for names written
+  in the Latin alphabet. Accented letters are converted to plain ones,
+  but names in other scripts, such as Arabic, Chinese, Cyrillic or
+  Devanagari, should be transliterated first. Note that a single name can
+  be romanised in several ways, as with Zhang and Chang.
+- **Compare like with like.** Codes from `max_length = 4`, from
+  `by_word = TRUE` and from the default settings are not comparable with
+  each other.
 
-```{r}
-double_metaphone(c("Shree", "Sri"))$primary
-double_metaphone(c("Agarwal and Sons", "Agarwal & Sons"))$primary
-double_metaphone(c("Trader", "Traders"))$primary
-```
+## Related packages
 
-"Sri" starts with S and "Shree" starts with SH, so they get different
-codes. An ampersand is dropped while "and" is coded. A plural adds an S.
-For such cases, standardise the text first. Replace "&" with "and",
-"Sri" with "Shree", remove words like "Traders" or "M/s", and only then
-compute the codes.
-
-## Preparing the text
-
-Both functions change letters to capitals. They replace common accented
-Latin letters with plain ones, drop apostrophes, and treat other
-punctuation and digits as spaces. Missing values stay missing.
-
-```{r}
-double_metaphone(c("O'Brien", "D'Souza", NA, "123"))
-```
-
-The algorithms work on Latin letters only. Names in Devanagari or other
-scripts should be transliterated first.
+- ['PGRdup'](https://CRAN.R-project.org/package=PGRdup) was the first
+  package to bring Double Metaphone to R, as part of a toolkit for
+  finding duplicate accessions in plant genetic resource collections.
+  Its `DoubleMetaphone()` function returns four-character codes. This
+  package uses the same rules, so its codes cut to four characters agree
+  with PGRdup's, apart from a few corrections described in the package
+  README.
+- ['phonics'](https://CRAN.R-project.org/package=phonics) provides many
+  phonetic algorithms, including Soundex, NYSIIS, Caverphone and
+  Metaphone, but not Double Metaphone.
+- ['stringdist'](https://CRAN.R-project.org/package=stringdist) computes
+  a wide range of string distances and includes Soundex.
+- ['RecordLinkage'](https://CRAN.R-project.org/package=RecordLinkage)
+  and ['fastLink'](https://CRAN.R-project.org/package=fastLink) provide
+  complete record linkage frameworks, in which phonetic codes can serve
+  as blocking keys or comparison fields.
 
 ## Credits
 
-Lawrence Philips designed both algorithms. The Double Metaphone rules
-here follow the C implementation by Maurice Aubrey, with fixes by Kevin
-Atkinson. The 'PGRdup' package by J. Aravind and co-authors uses the same
-C code and first brought Double Metaphone to R. Its
-`DoubleMetaphone()` function returns four-character codes. The Metaphone
-rules and the reference test data come from Apache Commons Codec.
+Lawrence Philips designed both algorithms. The Double Metaphone rules in
+this package are a translation of the C implementation by Maurice Aubrey
+in the Perl module
+[Text::DoubleMetaphone](https://metacpan.org/pod/Text::DoubleMetaphone),
+which includes fixes by Kevin Atkinson. The Metaphone rules and the
+reference test data come from
+[Apache Commons Codec](https://commons.apache.org/proper/commons-codec/).
+The `us_surnames` data come from the
+[United States Census Bureau](https://www.census.gov/topics/population/genealogy/data/2010_surnames.html).
 
 ## References
 
 Philips, L. (1990). Hanging on the metaphone. *Computer Language*,
-7(12), 39-44.
+7(12), 38-43.
 
 Philips, L. (2000). The double metaphone search algorithm. *C/C++ Users
 Journal*, 18(6), 38-43.
+[Archived copy](https://web.archive.org/web/20250702064845/https://drdobbs.com/the-double-metaphone-search-algorithm/184401251).

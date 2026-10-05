@@ -42,15 +42,21 @@ single Metaphone codes must be equal.
 A name with no codable letters, such as `""` or `"123"`, never matches.
 }
 \examples{
-sounds_like("Agarwal", c("Aggarwal", "Agrawal", "Agnihotri"))
+sounds_like("Meyer", c("Meier", "Mayer", "Maier", "Miller"))
 
 sounds_like("Smith", "Schmidt")
 sounds_like("Smith", "Schmidt", method = "metaphone")
 
 # Full codes tell long names apart. Four-character codes do not.
-sounds_like("Venkatesh", "Venkataraman")
-sounds_like("Venkatesh", "Venkataraman", max_length = 4)
+sounds_like("Christopher Anderson", "Christina Andrews")
+sounds_like("Christopher Anderson", "Christina Andrews", max_length = 4)
+
+# Search a register of names
+hits <- us_surnames[sounds_like("Schneider", us_surnames$surname), ]
+head(hits)
 }
 \seealso{
-[double_metaphone()], [metaphone()]
+[double_metaphone()], [metaphone()], and
+  `vignette("fullmetaphone")` for worked examples of de-duplication and
+  record linkage.
 }
