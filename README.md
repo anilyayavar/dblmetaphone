@@ -18,8 +18,10 @@ for its sound, so that names which sound alike can be matched.
   that Smith matches Schmidt and Wasserman matches Vasserman.
 
 Most implementations, including `PGRdup::DoubleMetaphone()`, cut the
-codes to four characters. That is often too short. With full-length
-codes, long and multi-part names keep their identity.
+codes to four characters. That is often too short. Here codes keep up to
+32 characters by default, which is the complete code for practically
+every real name, so long and multi-part names keep their identity. The
+length is set with the `max_length` argument.
 
 ```r
 library(fullmetaphone)
@@ -72,10 +74,26 @@ us_surnames[sounds_like("Schneider", us_surnames$surname), ]
 #> 4077   Santoro 4076   8713
 ```
 
-All functions take a `max_length` argument (default `Inf`, use `4` for
-the traditional codes) and a `by_word` argument to encode each word of a
-name separately. Missing values stay missing, accented Latin letters are
-read as plain letters, and punctuation is ignored.
+All functions share these arguments.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `max_length` | `32` | Largest number of characters kept in each code. `32` keeps the complete code for practically every real name. Use `Inf` for no limit, or `4` for the traditional short codes. |
+| `by_word` | `FALSE` | If `TRUE`, encode each word of a name separately and join the codes with spaces. |
+| `method` | `"double"` | `sounds_like()` only. Compare Double Metaphone codes (`"double"`) or Metaphone codes (`"metaphone"`). |
+
+```r
+double_metaphone("Christopher Anderson", max_length = 6)
+#>   primary secondary
+#> 1  KRSTFR    KRSTFR
+
+double_metaphone("Christopher Anderson", by_word = TRUE)
+#>       primary   secondary
+#> 1 KRSTFR ANTRSN KRSTFR ANTRSN
+```
+
+Missing values stay missing, accented Latin letters are read as plain
+letters, and punctuation is ignored.
 
 The vignette, `vignette("fullmetaphone")`, explains the algorithms and
 works through de-duplication, record linkage and name search, including

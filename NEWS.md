@@ -11,8 +11,9 @@ Atharv Tyagi.
   United States Census.
 * New vignette with worked examples of de-duplication, record linkage
   and name search.
-* New `max_length` argument. The default keeps the full code. The old
-  version cut codes at 32 characters.
+* New `max_length` argument to set the code length. The default stays
+  at 32 characters, as in the old version. Use `Inf` for no limit or `4`
+  for the traditional short codes.
 * New `by_word` argument to code each word of a name separately.
 * Missing values now give `NA` instead of empty strings.
 * Accented Latin letters are read as plain letters instead of being

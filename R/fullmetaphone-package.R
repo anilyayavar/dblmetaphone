@@ -11,9 +11,12 @@
 #' * [us_surnames], the 5000 most common surnames in the 2010 United
 #'   States Census, for examples and testing.
 #'
-#' Codes are returned in full. Most other implementations cut them to four
-#' characters, which makes many different long names look the same. Use
-#' `max_length = 4` when the traditional short codes are needed.
+#' Codes keep up to 32 characters by default, which is the complete code
+#' for practically every real name. Most other implementations cut them
+#' to four characters, which makes many different long names look the
+#' same. All functions take a `max_length` argument to change this. Use
+#' `max_length = Inf` for no limit, or `max_length = 4` for the
+#' traditional short codes.
 #'
 #' Start with `vignette("fullmetaphone")`, which explains the algorithms
 #' and shows how to use the codes for de-duplication, record linkage and

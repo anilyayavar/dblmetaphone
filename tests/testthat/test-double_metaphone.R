@@ -23,6 +23,16 @@ test_that("codes are not cut to four characters", {
   expect_true(all(nchar(res$primary) > 4))
 })
 
+test_that("the default length is 32 and Inf removes the limit", {
+  long <- paste(rep("Christopher Montgomery", 3), collapse = " ")
+  expect_equal(nchar(double_metaphone(long)$primary), 32L)
+  expect_equal(nchar(metaphone(long)), 32L)
+  expect_gt(nchar(double_metaphone(long, max_length = Inf)$primary), 32L)
+  expect_gt(nchar(metaphone(long, max_length = Inf)), 32L)
+  expect_equal(substr(double_metaphone(long, max_length = Inf)$primary, 1, 32),
+               double_metaphone(long)$primary)
+})
+
 test_that("max_length cuts the codes", {
   res <- double_metaphone("Ramakrishnan", max_length = 4)
   expect_equal(res$primary, "RMKR")

@@ -39,9 +39,11 @@ Greek and Chinese origin, and which gives a second code where a name has
 two common pronunciations.
 
 This package provides both algorithms in R. Its main difference from
-other implementations is that the codes are kept in full, instead of
-being cut to four characters. The sections below explain why that
-matters and show how to use the codes in common data tasks.
+other implementations is the length of the codes. Most implementations
+cut every code to four characters. Here codes keep up to 32 characters
+by default, which is the complete code for practically every real name,
+and the length can be set by the user. The sections below explain why
+that matters and show how to use the codes in common data tasks.
 
 ## Getting started
 
@@ -53,6 +55,14 @@ The package has three functions.
 | `double_metaphone(x)` | A data frame with a `primary` and a `secondary` Double Metaphone code per element of `x`. |
 | `sounds_like(x, y)` | A logical vector, `TRUE` where `x` and `y` share a code. |
 
+They share the following arguments.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `max_length` | `32` | The largest number of characters kept in each code. Use `Inf` for no limit, or `4` for the traditional short codes. See [Choosing the code length](#choosing-the-code-length). |
+| `by_word` | `FALSE` | If `TRUE`, each word of a name is encoded separately and the codes are joined by spaces. See [Names with several words](#names-with-several-words). |
+| `method` | `"double"` | `sounds_like()` only. `"double"` compares Double Metaphone codes, `"metaphone"` compares Metaphone codes. |
+
 ```{r}
 names <- c("Meyer", "Meier", "Mayer", "Catherine", "Katherine",
            "Smith", "Schmidt")
@@ -63,6 +73,43 @@ double_metaphone(names)
 All functions accept character vectors of any length and return one
 result per element. Missing values give `NA`. Each distinct value is
 encoded only once, so columns with many repeats are fast.
+
+## Choosing the code length
+
+The argument `max_length` controls how many characters of each code are
+kept. A code has roughly one character for each consonant sound, so it
+grows with the length of the name.
+
+```{r}
+long_name <- "Christopher Alexander Montgomery Fitzgerald"
+double_metaphone(long_name)
+double_metaphone(long_name, max_length = 4)
+double_metaphone(long_name, max_length = 10)
+double_metaphone(long_name, max_length = Inf)
+```
+
+There are three common choices.
+
+- **The default, 32.** This keeps the complete code for practically
+  every real name. Among the 5000 surnames in the included `us_surnames`
+  data, the longest code has 8 characters, and even the four-part name
+  above needs only 25. The limit only guards against unusually long
+  strings, such as whole addresses passed in by mistake.
+- **`Inf`.** No limit at all. Use it when you want the complete code
+  whatever the input.
+- **`4`.** The traditional length used by Philips' original programs and
+  by most other software. Use it to reproduce or compare with results
+  from other tools. As the next section shows, it is too short for most
+  matching tasks.
+
+With `by_word = TRUE` the limit applies to each word separately.
+
+```{r}
+double_metaphone(long_name, by_word = TRUE, max_length = 4)
+```
+
+Codes made with different lengths cannot be compared with each other,
+so use the same `max_length` for all data that you want to match.
 
 ## How the codes are built
 
@@ -109,9 +156,10 @@ sounds_like("Smith", "Schmidt", method = "metaphone")
 
 ## Why full-length codes
 
-Philips' original programs, and most later implementations such as
-`PGRdup::DoubleMetaphone()`, return only the first four characters of
-each code. Four characters were enough for building search indexes of
+This section compares the default codes with codes cut to four
+characters, using `max_length = 4`. Philips' original programs, and most
+later implementations such as `PGRdup::DoubleMetaphone()`, return only
+the first four characters of each code. Four characters were enough for building search indexes of
 English surnames in the 1990s. They are not enough for many tasks today,
 because different names that merely start alike end up with the same
 code.
@@ -171,9 +219,6 @@ data.frame(name = cr,
            four = double_metaphone(cr, max_length = 4)$primary,
            full = double_metaphone(cr)$primary)
 ```
-
-Use `max_length = 4` when you need the traditional short codes, for
-example to compare with results from other software.
 
 ## Example 1. Finding duplicate records
 

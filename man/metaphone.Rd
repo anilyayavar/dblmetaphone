@@ -2,16 +2,18 @@
 % Please edit documentation in R/metaphone.R
 \name{metaphone}
 \alias{metaphone}
-\title{Metaphone codes, in full}
+\title{Full-length Metaphone codes}
 \usage{
-metaphone(x, max_length = Inf, by_word = FALSE)
+metaphone(x, max_length = 32, by_word = FALSE)
 }
 \arguments{
 \item{x}{A character vector of names or words. Factors are accepted.}
 
 \item{max_length}{The largest number of characters to keep in each
-code. The default `Inf` keeps the full code. With `by_word = TRUE`
-the limit applies to each word separately.}
+code, a single number of at least 1. The default is 32. Use `Inf`
+for no limit, or `4` for the traditional short codes. With
+`by_word = TRUE` the limit applies to each word separately. See the
+section on code length.}
 
 \item{by_word}{If `TRUE`, encode each word separately and join the codes
 with spaces. See the section on several words.}
@@ -27,9 +29,9 @@ Lawrence Philips (1990). Each input gets one code. Words that sound
 alike in English, such as "Knight" and "Night", get the same code.
 }
 \details{
-Many implementations cut the code to four characters. Here the code is
-kept in full by default. Set `max_length = 4` to get the traditional
-short codes.
+Many implementations cut the code to four characters. Here codes keep
+up to 32 characters by default. Set `max_length = Inf` for no limit, or
+`max_length = 4` for the traditional short codes.
 
 The rules follow the Metaphone implementation in Apache Commons Codec,
 a widely used reference version. Unlike Double Metaphone, Metaphone
@@ -43,6 +45,24 @@ replaced by plain ones. The C with a cedilla becomes S. Apostrophes are
 removed, and any other character that is not a letter is treated as a
 space. Names written in other scripts should be transliterated to Latin
 letters first.
+}
+
+\section{Code length}{
+
+`max_length` sets the largest number of characters kept in each code.
+The default, 32, keeps the complete code for practically every real
+name, because a code has roughly one character per consonant sound.
+Only very long strings, such as a full name with many parts, reach the
+limit. Use `max_length = Inf` for no limit at all. Use
+`max_length = 4` for the traditional short codes, for example to
+compare results with other software. Codes made with different
+lengths should not be compared with each other.
+
+The rules follow the C implementation by Maurice Aubrey in the Perl
+module Text::DoubleMetaphone, which is based on Philips' own C++ code
+and is the version used by most other software. Cut to four
+characters, the codes agree with the reference data of Apache Commons
+Codec.
 }
 
 \section{Several words}{

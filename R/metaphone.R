@@ -1,18 +1,19 @@
-#' Metaphone codes, in full
+#' Full-length Metaphone codes
 #'
 #' Encodes names or words with the original Metaphone algorithm of
 #' Lawrence Philips (1990). Each input gets one code. Words that sound
 #' alike in English, such as "Knight" and "Night", get the same code.
 #'
-#' Many implementations cut the code to four characters. Here the code is
-#' kept in full by default. Set `max_length = 4` to get the traditional
-#' short codes.
+#' Many implementations cut the code to four characters. Here codes keep
+#' up to 32 characters by default. Set `max_length = Inf` for no limit, or
+#' `max_length = 4` for the traditional short codes.
 #'
 #' The rules follow the Metaphone implementation in Apache Commons Codec,
 #' a widely used reference version. Unlike Double Metaphone, Metaphone
 #' keeps a leading vowel as itself, so "Anna" gives `"AN"` and "Emma"
 #' gives `"EM"`.
 #'
+#' @inheritSection double_metaphone Code length
 #' @inheritSection double_metaphone Several words
 #' @inheritParams double_metaphone
 #'
@@ -47,7 +48,7 @@
 #'
 #' metaphone("Jean Pierre Dubois", by_word = TRUE)
 #' @export
-metaphone <- function(x, max_length = Inf, by_word = FALSE) {
+metaphone <- function(x, max_length = 32, by_word = FALSE) {
   check_args(max_length, by_word)
   codes <- encode_vector(x, mp_engine, n_codes = 1L, keep_special = FALSE,
                          by_word = by_word, max_length = max_length)

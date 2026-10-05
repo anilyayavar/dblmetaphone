@@ -37,7 +37,7 @@
 #' head(hits)
 #' @export
 sounds_like <- function(x, y, method = c("double", "metaphone"),
-                        max_length = Inf, by_word = FALSE) {
+                        max_length = 32, by_word = FALSE) {
   method <- match.arg(method)
   check_args(max_length, by_word)
   if (is.null(x)) x <- character(0)

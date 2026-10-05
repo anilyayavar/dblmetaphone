@@ -8,7 +8,7 @@ sounds_like(
   x,
   y,
   method = c("double", "metaphone"),
-  max_length = Inf,
+  max_length = 32,
   by_word = FALSE
 )
 }
@@ -20,8 +20,10 @@ length in the usual way, so one of them may be a single name.}
 `"metaphone"` for the original Metaphone.}
 
 \item{max_length}{The largest number of characters to keep in each
-code. The default `Inf` keeps the full code. With `by_word = TRUE`
-the limit applies to each word separately.}
+code, a single number of at least 1. The default is 32. Use `Inf`
+for no limit, or `4` for the traditional short codes. With
+`by_word = TRUE` the limit applies to each word separately. See the
+section on code length.}
 
 \item{by_word}{If `TRUE`, encode each word separately and join the codes
 with spaces. See the section on several words.}
