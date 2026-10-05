@@ -1,0 +1,175 @@
+---
+title: "Getting started with fullmetaphone"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with fullmetaphone}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r setup}
+library(fullmetaphone)
+```
+
+## Why phonetic codes
+
+The same name is often spelled in many ways. Agarwal, Aggarwal and
+Agrawal are one surname. Shree and Sri are one word. An exact match on a
+name column misses all of these.
+
+A phonetic code turns a name into a short string that stands for its
+sound. Names that sound alike get the same code.
+
+```{r}
+metaphone(c("Agarwal", "Aggarwal", "Agrawal"))
+```
+
+## Two algorithms
+
+`metaphone()` uses the original Metaphone algorithm of Lawrence Philips
+(1990). It gives one code for each name.
+
+`double_metaphone()` uses Philips' later Double Metaphone algorithm
+(2000). It gives two codes. The primary code is the most likely
+pronunciation. The secondary code allows for another common one.
+
+```{r}
+double_metaphone(c("Smith", "Schmidt", "Jose", "Michael"))
+```
+
+Smith and Schmidt share the code `XMT`, one as secondary and one as
+primary. Double Metaphone treats two names as alike when any of their
+codes match. `sounds_like()` does this check for you.
+
+```{r}
+sounds_like("Smith", "Schmidt")
+sounds_like("Smith", "Schmidt", method = "metaphone")
+```
+
+## Why full-length codes
+
+Most implementations keep only the first four characters of a code. For
+short Western surnames that is enough. For long names it is not, and
+Indian names are often long.
+
+```{r}
+names <- c("Venkatesh", "Venkataraman", "Venkatraman")
+double_metaphone(names, max_length = 4)
+double_metaphone(names)
+```
+
+With four characters, all three names look the same. With full codes,
+Venkataraman and Venkatraman still match, as they should. Venkatesh is
+now kept apart.
+
+The difference adds up quickly. In one test set of 5000 synthetic Indian
+names, four-character codes gave about 2700 distinct primary codes. Full
+codes gave about 4950. So four-character codes would have flagged many
+pairs of different people as possible duplicates.
+
+Use `max_length = 4` whenever you need the traditional short codes, for
+example to compare with results from other software.
+
+## Names with several words
+
+By default the whole name is coded as one string, as in the original
+algorithm. Set `by_word = TRUE` to code each word on its own. The word
+codes are joined with spaces.
+
+```{r}
+double_metaphone("Ramesh Kumar Sharma")
+double_metaphone("Ramesh Kumar Sharma", by_word = TRUE)
+```
+
+Word-by-word codes help when the parts of a name can come in a different
+order. You can sort the word codes before comparing them.
+
+```{r}
+codes <- metaphone(c("Ramesh Kumar", "Kumar Ramesh"), by_word = TRUE)
+codes
+sorted <- vapply(strsplit(codes, " "),
+                 function(w) paste(sort(w), collapse = " "),
+                 character(1))
+sorted[1] == sorted[2]
+```
+
+## A small de-duplication example
+
+Here is a list of payees with some planted near-duplicates.
+
+```{r}
+payees <- data.frame(
+  id = 1:10,
+  name = c("Shree Ganesh Traders", "Shri Ganesh Traders",
+           "Venkataraman Enterprises", "Venkatraman Enterprises",
+           "Venkatesh Enterprises",
+           "Agarwal and Sons", "Agrawal and Sons",
+           "Mohan Lal", "Mohan Laal", "Sohan Lal")
+)
+payees <- cbind(payees, double_metaphone(payees$name, by_word = TRUE))
+payees
+```
+
+Group the rows by their primary code and keep the groups with more than
+one row.
+
+```{r}
+groups <- split(payees$id, payees$primary)
+groups[lengths(groups) > 1]
+```
+
+Four pairs are flagged. Shree and Shri, Venkataraman and Venkatraman,
+Agarwal and Agrawal, and Lal and Laal. Venkatesh Enterprises and Sohan
+Lal are rightly left alone. A real review would also compare the
+secondary codes, and would then check each flagged pair by hand.
+
+## What phonetic codes miss
+
+Phonetic codes are not magic. They follow English spelling rules, and
+some variations defeat them.
+
+```{r}
+double_metaphone(c("Shree", "Sri"))$primary
+double_metaphone(c("Agarwal and Sons", "Agarwal & Sons"))$primary
+double_metaphone(c("Trader", "Traders"))$primary
+```
+
+"Sri" starts with S and "Shree" starts with SH, so they get different
+codes. An ampersand is dropped while "and" is coded. A plural adds an S.
+For such cases, standardise the text first. Replace "&" with "and",
+"Sri" with "Shree", remove words like "Traders" or "M/s", and only then
+compute the codes.
+
+## Preparing the text
+
+Both functions change letters to capitals. They replace common accented
+Latin letters with plain ones, drop apostrophes, and treat other
+punctuation and digits as spaces. Missing values stay missing.
+
+```{r}
+double_metaphone(c("O'Brien", "D'Souza", NA, "123"))
+```
+
+The algorithms work on Latin letters only. Names in Devanagari or other
+scripts should be transliterated first.
+
+## Credits
+
+Lawrence Philips designed both algorithms. The Double Metaphone rules
+here follow the C implementation by Maurice Aubrey, with fixes by Kevin
+Atkinson. The 'PGRdup' package by J. Aravind and co-authors uses the same
+C code and first brought Double Metaphone to R. Its
+`DoubleMetaphone()` function returns four-character codes. The Metaphone
+rules and the reference test data come from Apache Commons Codec.
+
+## References
+
+Philips, L. (1990). Hanging on the metaphone. *Computer Language*,
+7(12), 39-44.
+
+Philips, L. (2000). The double metaphone search algorithm. *C/C++ Users
+Journal*, 18(6), 38-43.

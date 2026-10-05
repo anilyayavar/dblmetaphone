@@ -1,15 +1,41 @@
-Package: cagmetaphone
+Package: fullmetaphone
 Type: Package
-Title: Double Metaphone Phonetic Encoding (CAG Implementation)
-Version: 1.0.0
-Author: Atharv Tyagi (Under Anil Kumar Goyal - SAO)
-Maintainer: Atharv Tyagi <tatharv597@gmail.com>
-Description: 
-    An R implementation of the Double Metaphone phonetic encoding algorithm,
-    it is designed for proper and detailed implementation and validated using
-    large-scale synthetic and real-world name datasets. Designed for
-    phonetic deduplication and audit use cases.
-License: MIT
+Title: Full-Length Metaphone and Double Metaphone Phonetic Codes
+Version: 0.1.0
+Authors@R: c(
+    person("Anil Kumar", "Goyal", email = "anilyayavar@gmail.com",
+           role = c("aut", "cre", "cph")),
+    person("Atharv", "Tyagi", email = "tatharv597@gmail.com",
+           role = c("aut", "cph")),
+    person("Lawrence", "Philips", role = "ctb",
+           comment = "Designer of the Metaphone and Double Metaphone algorithms and author of their original code"),
+    person("Maurice", "Aubrey", role = "ctb",
+           comment = "Author of the C implementation of Double Metaphone whose rules are followed here"),
+    person("Kevin", "Atkinson", role = "ctb",
+           comment = "Bug fixes to that C implementation"),
+    person("The Apache Software Foundation", role = "cph",
+           comment = "Apache Commons Codec, the basis of metaphone() and of the test data")
+    )
+Description: Encodes names and words into phonetic codes using the
+    Metaphone algorithm (Philips 1990, "Hanging on the Metaphone",
+    Computer Language 7(12)) and the Double Metaphone algorithm (Philips
+    2000, "The Double Metaphone Search Algorithm", C/C++ Users Journal
+    18(6)). Names that sound alike but are spelled differently get the
+    same code. Codes are returned in full rather than cut to the first
+    four characters, so long and multi-part names stay distinguishable.
+    Useful for record linkage, de-duplication and audit of name fields.
+License: GPL-3
+URL: https://github.com/anilyayavar/dblmetaphone
+BugReports: https://github.com/anilyayavar/dblmetaphone/issues
+Copyright: See file inst/COPYRIGHTS.
+Depends:
+    R (>= 3.5.0)
+Suggests:
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
 Encoding: UTF-8
-LazyData: true
-RoxygenNote: 7.3.3
+Language: en-GB
+Config/roxygen2/version: 8.1.0

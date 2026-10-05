@@ -2,16 +2,84 @@
 % Please edit documentation in R/double_metaphone.R
 \name{double_metaphone}
 \alias{double_metaphone}
-\title{Double Metaphone}
+\title{Double Metaphone codes, in full}
 \usage{
-double_metaphone(word)
+double_metaphone(x, max_length = Inf, by_word = FALSE)
 }
 \arguments{
-\item{word}{Character string}
+\item{x}{A character vector of names or words. Factors are accepted.}
+
+\item{max_length}{The largest number of characters to keep in each
+code. The default `Inf` keeps the full code. With `by_word = TRUE`
+the limit applies to each word separately.}
+
+\item{by_word}{If `TRUE`, encode each word separately and join the codes
+with spaces. See the section on several words.}
 }
 \value{
-Character vector of length 2 (primary, secondary)
+A data frame with one row for each element of `x` and two
+  character columns, `primary` and `secondary`. Missing values in `x`
+  give `NA` in both columns. A value with no codable letters gives
+  empty strings.
 }
 \description{
-Double Metaphone phonetic encoding algorithm
+Encodes names or words with the Double Metaphone algorithm of Lawrence
+Philips (2000). Each input gets two codes. The primary code is the most
+likely pronunciation. The secondary (alternate) code allows for another
+common pronunciation, for example of a name from another language.
+}
+\details{
+Most implementations, including `PGRdup::DoubleMetaphone()`, keep only
+the first four characters of each code. Here the codes are kept in full
+by default, so "Venkatesh" and "Venkataraman" no longer get the same
+code. Set `max_length = 4` to get the traditional short codes.
+
+The rules follow the C implementation by Maurice Aubrey, which is based
+on Philips' own C++ code. That is the version used by most other
+software.
+}
+\section{Preparing the text}{
+
+Letters are changed to capitals, and common accented Latin letters are
+replaced by plain ones, so a u with an umlaut is read as U. The C with
+a cedilla and the N with a tilde keep their own Double Metaphone rules
+and are read as S and N. Apostrophes are
+removed, so "O'Brien" is read as "OBRIEN". Any other character that is
+not a letter, such as a digit, hyphen or full stop, is treated as a
+space. Names written in other scripts, such as Devanagari, should be
+transliterated to Latin letters first.
+}
+
+\section{Several words}{
+
+By default the whole text is encoded as one string, exactly as the
+original algorithm does. Spaces are kept and some rules use them, for
+example "San Jacinto" or "Van Damme". The code then runs the words
+together. Set `by_word = TRUE` to encode each word on its own instead.
+The word codes are then joined with single spaces, so "Ramesh Kumar"
+gives `"RMX KMR"`. This makes it easy to compare names whose parts are
+written in a different order.
+}
+
+\examples{
+double_metaphone(c("Smith", "Schmidt", "Thompson", "Agarwal", "Aggarwal"))
+
+# Full codes keep long names apart
+double_metaphone(c("Venkatesh", "Venkataraman"))
+double_metaphone(c("Venkatesh", "Venkataraman"), max_length = 4)
+
+# Encode each part of a name separately
+double_metaphone("Ramesh Kumar Sharma", by_word = TRUE)
+
+# Add the codes to a data frame
+vendors <- data.frame(name = c("Shree Ganesh Traders", "Sri Ganesh Trader"))
+cbind(vendors, double_metaphone(vendors$name))
+}
+\references{
+Philips, L. (2000). The double metaphone search algorithm. *C/C++
+Users Journal*, 18(6), 38-43.
+}
+\seealso{
+[metaphone()] for the original single-code algorithm, and
+  [sounds_like()] to compare two sets of names.
 }

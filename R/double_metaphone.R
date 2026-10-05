@@ -1,800 +1,702 @@
-#' Double Metaphone
+#' Double Metaphone codes, in full
 #'
-#' Double Metaphone phonetic encoding algorithm
+#' Encodes names or words with the Double Metaphone algorithm of Lawrence
+#' Philips (2000). Each input gets two codes. The primary code is the most
+#' likely pronunciation. The secondary (alternate) code allows for another
+#' common pronunciation, for example of a name from another language.
 #'
-#' @param word Character string
-#' @return Character vector of length 2 (primary, secondary)
+#' Most implementations, including `PGRdup::DoubleMetaphone()`, keep only
+#' the first four characters of each code. Here the codes are kept in full
+#' by default, so "Venkatesh" and "Venkataraman" no longer get the same
+#' code. Set `max_length = 4` to get the traditional short codes.
+#'
+#' The rules follow the C implementation by Maurice Aubrey, which is based
+#' on Philips' own C++ code. That is the version used by most other
+#' software.
+#'
+#' @section Preparing the text:
+#' Letters are changed to capitals, and common accented Latin letters are
+#' replaced by plain ones, so a u with an umlaut is read as U. The C with
+#' a cedilla and the N with a tilde keep their own Double Metaphone rules
+#' and are read as S and N. Apostrophes are
+#' removed, so "O'Brien" is read as "OBRIEN". Any other character that is
+#' not a letter, such as a digit, hyphen or full stop, is treated as a
+#' space. Names written in other scripts, such as Devanagari, should be
+#' transliterated to Latin letters first.
+#'
+#' @section Several words:
+#' By default the whole text is encoded as one string, exactly as the
+#' original algorithm does. Spaces are kept and some rules use them, for
+#' example "San Jacinto" or "Van Damme". The code then runs the words
+#' together. Set `by_word = TRUE` to encode each word on its own instead.
+#' The word codes are then joined with single spaces, so "Ramesh Kumar"
+#' gives `"RMX KMR"`. This makes it easy to compare names whose parts are
+#' written in a different order.
+#'
+#' @param x A character vector of names or words. Factors are accepted.
+#' @param max_length The largest number of characters to keep in each
+#'   code. The default `Inf` keeps the full code. With `by_word = TRUE`
+#'   the limit applies to each word separately.
+#' @param by_word If `TRUE`, encode each word separately and join the codes
+#'   with spaces. See the section on several words.
+#'
+#' @return A data frame with one row for each element of `x` and two
+#'   character columns, `primary` and `secondary`. Missing values in `x`
+#'   give `NA` in both columns. A value with no codable letters gives
+#'   empty strings.
+#'
+#' @references
+#' Philips, L. (2000). The double metaphone search algorithm. *C/C++
+#' Users Journal*, 18(6), 38-43.
+#'
+#' @seealso [metaphone()] for the original single-code algorithm, and
+#'   [sounds_like()] to compare two sets of names.
+#'
+#' @examples
+#' double_metaphone(c("Smith", "Schmidt", "Thompson", "Agarwal", "Aggarwal"))
+#'
+#' # Full codes keep long names apart
+#' double_metaphone(c("Venkatesh", "Venkataraman"))
+#' double_metaphone(c("Venkatesh", "Venkataraman"), max_length = 4)
+#'
+#' # Encode each part of a name separately
+#' double_metaphone("Ramesh Kumar Sharma", by_word = TRUE)
+#'
+#' # Add the codes to a data frame
+#' vendors <- data.frame(name = c("Shree Ganesh Traders", "Sri Ganesh Trader"))
+#' cbind(vendors, double_metaphone(vendors$name))
 #' @export
-double_metaphone <- function(word) {
-  # Constants
-  max_length <- 32
+double_metaphone <- function(x, max_length = Inf, by_word = FALSE) {
+  check_args(max_length, by_word)
+  codes <- encode_vector(x, dm_engine, n_codes = 2L, keep_special = TRUE,
+                         by_word = by_word, max_length = max_length)
+  data.frame(primary = codes[, 1L], secondary = codes[, 2L],
+             stringsAsFactors = FALSE)
+}
 
-  # Helper functions
-  char_at <- function(s, pos) {
-    if (pos < 1 || pos > nchar(s)) return("")
-    substr(s, pos, pos)
-  }
-
-  string_at <- function(s, start, length, ...) {
-    if (start < 1 || start > nchar(s)) return(FALSE)
-
-    patterns <- list(...)
-    substr_str <- substr(s, start, start + length - 1)
-
-    for (pattern in patterns) {
-      if (pattern == "") break
-      if (substr(substr_str, 1, nchar(pattern)) == pattern) {
-        return(TRUE)
-      }
-    }
-    FALSE
-  }
-
-  is_vowel <- function(s, pos) {
-    if (pos < 1 || pos > nchar(s)) return(FALSE)
-    char <- char_at(s, pos)
-    char %in% c("A", "E", "I", "O", "U", "Y")
-  }
-
-  is_slavo_germanic <- function(s) {
-    grepl("W", s) || grepl("K", s) || grepl("CZ", s) || grepl("WITZ", s)
-  }
-
-  # Main function
-  if (is.na(word) || !nzchar(word)) {
+# Double Metaphone for one cleaned, upper-case string.
+#
+# This is a line-by-line translation of the C implementation by Maurice
+# Aubrey (with fixes by Kevin Atkinson), which follows Lawrence Philips'
+# C++ original. Positions are kept 0-based, as in the C code, so the two
+# can be compared rule by rule. The C code stops after four characters;
+# this version runs to the end of the string.
+#
+# Returns c(primary, secondary).
+dm_engine <- function(word) {
+  length <- nchar(word)
+  if (length == 0L) {
     return(c("", ""))
   }
+  last <- length - 1L
 
-  # Convert to uppercase
-  original <- toupper(word)
+  # The C code pads the string with five spaces so that it can look past
+  # the end safely. We do the same.
+  padded <- paste0(word, "     ")
+  padded_length <- length + 5L
+  chars <- strsplit(padded, "", fixed = TRUE)[[1L]]
 
-  # Remove non-alphabetic characters
-  original <- gsub("[^A-Z]", "", original)
-
-  # Add padding
-  original_padded <- paste0(original, "     ")
-
-  length <- nchar(original)
-  last <- length
+  get_at <- function(pos) {
+    if (pos < 0L || pos >= padded_length) "" else chars[pos + 1L]
+  }
+  string_at <- function(start, n, ...) {
+    if (start < 0L || start >= padded_length) {
+      return(FALSE)
+    }
+    substr(padded, start + 1L, start + n) %in% c(...)
+  }
+  is_vowel <- function(pos) {
+    if (pos < 0L || pos >= padded_length) {
+      return(FALSE)
+    }
+    chars[pos + 1L] %in% c("A", "E", "I", "O", "U", "Y")
+  }
+  slavo_germanic <- grepl("W|K|CZ", word)
 
   primary <- ""
   secondary <- ""
-  current <- 1
-
-  # Skip certain prefixes
-  if (string_at(original_padded, current, 2, "GN", "KN", "PN", "WR", "PS", "")) {
-    current <- current + 1
+  add <- function(main, alt = main) {
+    primary <<- paste0(primary, main)
+    secondary <<- paste0(secondary, alt)
   }
 
-  # Initial 'X' is pronounced 'Z' (which maps to 'S')
-  if (char_at(original_padded, current) == "X") {
-    primary <- paste0(primary, "S")
-    secondary <- paste0(secondary, "S")
-    current <- current + 1
+  current <- 0L
+
+  # Skip these letters when at the start of a word.
+  if (string_at(0L, 2L, "GN", "KN", "PN", "WR", "PS")) {
+    current <- current + 1L
+  }
+  # Initial X is pronounced Z, as in Xavier. Z maps to S.
+  if (get_at(0L) == "X") {
+    add("S")
+    current <- current + 1L
   }
 
-  # Main loop
-  while (nchar(primary) < max_length || nchar(secondary) < max_length) {
+  # In the C code each case ends with `break`. Here `next` does the same
+  # job, since nothing follows the switch inside the loop.
+  while (current < length) {
+    ch <- get_at(current)
+    if (ch == cedilla) ch <- "CEDILLA"
+    if (ch == n_tilde) ch <- "NTILDE"
 
-    if (current > length) break
+    switch(EXPR = ch,
+      "A" = , "E" = , "I" = , "O" = , "U" = , "Y" = {
+        # All initial vowels map to A.
+        if (current == 0L) add("A")
+        current <- current + 1L
+      },
 
-    prev_current <- current
-    ch <- char_at(original_padded, current)
+      "B" = {
+        # "-mb", as in "dumb", is already skipped over.
+        add("P")
+        current <- current + if (get_at(current + 1L) == "B") 2L else 1L
+      },
 
-    switch(ch,
-           "A" = ,
-           "E" = ,
-           "I" = ,
-           "O" = ,
-           "U" = ,
-           "Y" = {
-             if (current == 1) {
-               primary <- paste0(primary, "A")
-               secondary <- paste0(secondary, "A")
-             }
-             current <- current + 1
-           },
+      "CEDILLA" = {
+        add("S")
+        current <- current + 1L
+      },
 
-           "B" = {
-             primary <- paste0(primary, "P")
-             secondary <- paste0(secondary, "P")
-             if (char_at(original_padded, current + 1) == "B") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-           },
+      "C" = {
+        # Various Germanic
+        if (current > 1L &&
+            !is_vowel(current - 2L) &&
+            string_at(current - 1L, 3L, "ACH") &&
+            get_at(current + 2L) != "I" &&
+            (get_at(current + 2L) != "E" ||
+             string_at(current - 2L, 6L, "BACHER", "MACHER"))) {
+          add("K")
+          current <- current + 2L
+          next
+        }
+        # Special case "caesar"
+        if (current == 0L && string_at(current, 6L, "CAESAR")) {
+          add("S")
+          current <- current + 2L
+          next
+        }
+        # Italian "chianti"
+        if (string_at(current, 4L, "CHIA")) {
+          add("K")
+          current <- current + 2L
+          next
+        }
+        if (string_at(current, 2L, "CH")) {
+          # Find "michael"
+          if (current > 0L && string_at(current, 4L, "CHAE")) {
+            add("K", "X")
+            current <- current + 2L
+            next
+          }
+          # Greek roots, as in "chemistry", "chorus"
+          if (current == 0L &&
+              (string_at(current + 1L, 5L, "HARAC", "HARIS") ||
+               string_at(current + 1L, 3L, "HOR", "HYM", "HIA", "HEM")) &&
+              !string_at(0L, 5L, "CHORE")) {
+            add("K")
+            current <- current + 2L
+            next
+          }
+          # Germanic, Greek, or otherwise "ch" for the "kh" sound
+          if (string_at(0L, 4L, "VAN ", "VON ") ||
+              string_at(0L, 3L, "SCH") ||
+              # "architect" but not "arch", "orchestra", "orchid"
+              string_at(current - 2L, 6L, "ORCHES", "ARCHIT", "ORCHID") ||
+              string_at(current + 2L, 1L, "T", "S") ||
+              ((string_at(current - 1L, 1L, "A", "O", "U", "E") ||
+                current == 0L) &&
+               # "wachtler", "wechsler", but not "tichner"
+               string_at(current + 2L, 1L, "L", "R", "N", "M", "B", "H",
+                         "F", "V", "W", " "))) {
+            add("K")
+          } else if (current > 0L) {
+            if (string_at(0L, 2L, "MC")) {
+              add("K") # "McHugh"
+            } else {
+              add("X", "K")
+            }
+          } else {
+            add("X")
+          }
+          current <- current + 2L
+          next
+        }
+        # "czerny"
+        if (string_at(current, 2L, "CZ") &&
+            !string_at(current - 2L, 4L, "WICZ")) {
+          add("S", "X")
+          current <- current + 2L
+          next
+        }
+        # "focaccia"
+        if (string_at(current + 1L, 3L, "CIA")) {
+          add("X")
+          current <- current + 3L
+          next
+        }
+        # Double C, but not as in "McClellan"
+        if (string_at(current, 2L, "CC") &&
+            !(current == 1L && get_at(0L) == "M")) {
+          # "bellocchio" but not "bacchus"
+          if (string_at(current + 2L, 1L, "I", "E", "H") &&
+              !string_at(current + 2L, 2L, "HU")) {
+            # "accident", "accede", "succeed"
+            if ((current == 1L && get_at(current - 1L) == "A") ||
+                string_at(current - 1L, 5L, "UCCEE", "UCCES")) {
+              add("KS")
+            } else {
+              # "bacci", "bertucci", other Italian
+              add("X")
+            }
+            current <- current + 3L
+            next
+          } else {
+            # Pierce's rule
+            add("K")
+            current <- current + 2L
+            next
+          }
+        }
+        if (string_at(current, 2L, "CK", "CG", "CQ")) {
+          add("K")
+          current <- current + 2L
+          next
+        }
+        if (string_at(current, 2L, "CI", "CE", "CY")) {
+          # Italian against English
+          if (string_at(current, 3L, "CIO", "CIE", "CIA")) {
+            add("S", "X")
+          } else {
+            add("S")
+          }
+          current <- current + 2L
+          next
+        }
+        add("K")
+        # Name sent in "mac caffrey", "mac gregor"
+        if (string_at(current + 1L, 2L, " C", " Q", " G")) {
+          current <- current + 3L
+        } else if (string_at(current + 1L, 1L, "C", "K", "Q") &&
+                   !string_at(current + 1L, 2L, "CE", "CI")) {
+          current <- current + 2L
+        } else {
+          current <- current + 1L
+        }
+      },
 
-           "C" = {
-             # Various Germanic
-             if (current > 2 &&
-                 !is_vowel(original_padded, current - 2) &&
-                 string_at(original_padded, current - 1, 3, "ACH", "") &&
-                 (char_at(original_padded, current + 2) != "I" &&
-                  (char_at(original_padded, current + 2) != "E" ||
-                   string_at(original_padded, current - 2, 6, "BACHER", "MACHER", "")))) {
-               primary <- paste0(primary, "K")
-               secondary <- paste0(secondary, "K")
-               current <- current + 2
-             }
-             # Special case 'caesar'
-             else if (current == 1 && string_at(original_padded, current, 6, "CAESAR", "")) {
-               primary <- paste0(primary, "S")
-               secondary <- paste0(secondary, "S")
-               current <- current + 2
-             }
-             # Italian 'chianti'
-             else if (string_at(original_padded, current, 4, "CHIA", "")) {
-               primary <- paste0(primary, "K")
-               secondary <- paste0(secondary, "K")
-               current <- current + 2
-             }
-             else if (string_at(original_padded, current, 2, "CH", "")) {
-               # Find 'michael'
-               if (current > 1 && string_at(original_padded, current, 4, "CHAE", "")) {
-                 primary <- paste0(primary, "K")
-                 secondary <- paste0(secondary, "X")
-                 current <- current + 2
-               }
-               # Greek roots e.g. 'chemistry', 'chorus'
-               else if (current == 1 &&
-                        (string_at(original_padded, current + 1, 5, "HARAC", "HARIS", "") ||
-                         string_at(original_padded, current + 1, 3, "HOR", "HYM", "HIA", "HEM", "")) &&
-                        !string_at(original_padded, 1, 5, "CHORE", "")) {
-                 primary <- paste0(primary, "K")
-                 secondary <- paste0(secondary, "K")
-                 current <- current + 2
-               }
-               # Germanic, Greek, or otherwise 'ch' for 'kh' sound
-               else if ((string_at(original_padded, 1, 4, "VAN ", "VON ", "") ||
-                         string_at(original_padded, 1, 3, "SCH", "")) ||
-                        # 'architect' but not 'arch', 'orchestra', 'orchid'
-                        string_at(original_padded, current - 2, 6, "ORCHES", "ARCHIT", "ORCHID", "") ||
-                        string_at(original_padded, current + 2, 1, "T", "S", "") ||
-                        ((string_at(original_padded, current - 1, 1, "A", "O", "U", "E", "") ||
-                          (current == 1)) &&
-                         # e.g., 'wachtler', 'wechsler', but not 'tichner'
-                         string_at(original_padded, current + 2, 1, "L", "R", "N", "M", "B", "H", "F", "V", "W", " ", ""))) {
-                 primary <- paste0(primary, "K")
-                 secondary <- paste0(secondary, "K")
-               } else {
-                 if (current > 1) {
-                   if (string_at(original_padded, 1, 2, "MC", "")) {
-                     # e.g., "McHugh"
-                     primary <- paste0(primary, "K")
-                     secondary <- paste0(secondary, "K")
-                   } else {
-                     primary <- paste0(primary, "X")
-                     secondary <- paste0(secondary, "K")
-                   }
-                 } else {
-                   primary <- paste0(primary, "X")
-                   secondary <- paste0(secondary, "X")
-                 }
-               }
-               current <- current + 2
-             }
-             # e.g., 'czerny'
-             else if (string_at(original_padded, current, 2, "CZ", "") &&
-                      !string_at(original_padded, current - 2, 4, "WICZ", "")) {
-               primary <- paste0(primary, "S")
-               secondary <- paste0(secondary, "X")
-               current <- current + 2
-             }
-             # e.g., 'focaccia'
-             else if (string_at(original_padded, current + 1, 3, "CIA", "")) {
-               primary <- paste0(primary, "X")
-               secondary <- paste0(secondary, "X")
-               current <- current + 3
-             }
-             # Double 'C', but not if e.g. 'McClellan'
-             else if (string_at(original_padded, current, 2, "CC", "") &&
-                      !((current == 2) && (char_at(original_padded, 1) == "M"))) {
-               # 'bellocchio' but not 'bacchus'
-               if (string_at(original_padded, current + 2, 1, "I", "E", "H", "") &&
-                   !string_at(original_padded, current + 2, 2, "HU", "")) {
-                 # 'accident', 'accede', 'succeed'
-                 if (((current == 2) && (char_at(original_padded, current - 1) == "A")) ||
-                     string_at(original_padded, current - 1, 5, "UCCEE", "UCCES", "")) {
-                   primary <- paste0(primary, "KS")
-                   secondary <- paste0(secondary, "KS")
-                 } else {
-                   # 'bacci', 'bertucci', other Italian
-                   primary <- paste0(primary, "X")
-                   secondary <- paste0(secondary, "X")
-                 }
-                 current <- current + 3
-               } else {
-                 # Pierce's rule
-                 primary <- paste0(primary, "K")
-                 secondary <- paste0(secondary, "K")
-                 current <- current + 2
-               }
-             }
-             else if (string_at(original_padded, current, 2, "CK", "CG", "CQ", "")) {
-               primary <- paste0(primary, "K")
-               secondary <- paste0(secondary, "K")
-               current <- current + 2
-             }
-             else if (string_at(original_padded, current, 2, "CI", "CE", "CY", "")) {
-               # Italian vs. English
-               if (string_at(original_padded, current, 3, "CIO", "CIE", "CIA", "")) {
-                 primary <- paste0(primary, "S")
-                 secondary <- paste0(secondary, "X")
-               } else {
-                 primary <- paste0(primary, "S")
-                 secondary <- paste0(secondary, "S")
-               }
-               current <- current + 2
-             }
-             else {
-               primary <- paste0(primary, "K")
-               secondary <- paste0(secondary, "K")
+      "D" = {
+        if (string_at(current, 2L, "DG")) {
+          if (string_at(current + 2L, 1L, "I", "E", "Y")) {
+            add("J") # "edge"
+            current <- current + 3L
+          } else {
+            add("TK") # "edgar"
+            current <- current + 2L
+          }
+          next
+        }
+        if (string_at(current, 2L, "DT", "DD")) {
+          add("T")
+          current <- current + 2L
+          next
+        }
+        add("T")
+        current <- current + 1L
+      },
 
-               # Name sent in 'mac caffrey', 'mac gregor'
-               if (string_at(original_padded, current + 1, 2, " C", " Q", " G", "")) {
-                 current <- current + 3
-               } else if (string_at(original_padded, current + 1, 1, "C", "K", "Q", "") &&
-                          !string_at(original_padded, current + 1, 2, "CE", "CI", "")) {
-                 current <- current + 2
-               } else {
-                 current <- current + 1
-               }
-             }
-           },
+      "F" = {
+        current <- current + if (get_at(current + 1L) == "F") 2L else 1L
+        add("F")
+      },
 
-           "D" = {
-             if (string_at(original_padded, current, 2, "DG", "")) {
-               if (string_at(original_padded, current + 2, 1, "I", "E", "Y", "")) {
-                 # e.g., 'edge'
-                 primary <- paste0(primary, "J")
-                 secondary <- paste0(secondary, "J")
-                 current <- current + 3
-               } else {
-                 # e.g., 'edgar'
-                 primary <- paste0(primary, "TK")
-                 secondary <- paste0(secondary, "TK")
-                 current <- current + 2
-               }
-             } else if (string_at(original_padded, current, 2, "DT", "DD", "")) {
-               primary <- paste0(primary, "T")
-               secondary <- paste0(secondary, "T")
-               current <- current + 2
-             } else {
-               primary <- paste0(primary, "T")
-               secondary <- paste0(secondary, "T")
-               current <- current + 1
-             }
-           },
+      "G" = {
+        if (get_at(current + 1L) == "H") {
+          if (current > 0L && !is_vowel(current - 1L)) {
+            add("K")
+            current <- current + 2L
+            next
+          }
+          # "ghislane", "ghiradelli"
+          if (current == 0L) {
+            if (get_at(current + 2L) == "I") add("J") else add("K")
+            current <- current + 2L
+            next
+          }
+          # Parker's rule, with some further refinements
+          if ((current > 1L &&
+               string_at(current - 2L, 1L, "B", "H", "D")) ||   # "hugh"
+              (current > 2L &&
+               string_at(current - 3L, 1L, "B", "H", "D")) ||   # "bough"
+              (current > 3L &&
+               string_at(current - 4L, 1L, "B", "H"))) {        # "broughton"
+            current <- current + 2L
+            next
+          }
+          # "laugh", "McLaughlin", "cough", "gough", "rough", "tough"
+          if (current > 2L &&
+              get_at(current - 1L) == "U" &&
+              string_at(current - 3L, 1L, "C", "G", "L", "R", "T")) {
+            add("F")
+          } else if (current > 0L && get_at(current - 1L) != "I") {
+            add("K")
+          }
+          current <- current + 2L
+          next
+        }
 
-           "F" = {
-             if (char_at(original_padded, current + 1) == "F") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-             primary <- paste0(primary, "F")
-             secondary <- paste0(secondary, "F")
-           },
+        if (get_at(current + 1L) == "N") {
+          if (current == 1L && is_vowel(0L) && !slavo_germanic) {
+            add("KN", "N")
+          } else if (!string_at(current + 2L, 2L, "EY") &&
+                     get_at(current + 1L) != "Y" &&
+                     !slavo_germanic) {
+            # Not as in "cagney"
+            add("N", "KN")
+          } else {
+            add("KN")
+          }
+          current <- current + 2L
+          next
+        }
+        # "tagliaro"
+        if (string_at(current + 1L, 2L, "LI") && !slavo_germanic) {
+          add("KL", "L")
+          current <- current + 2L
+          next
+        }
+        # -ges-, -gep-, -gel-, -gie- at the beginning
+        if (current == 0L &&
+            (get_at(current + 1L) == "Y" ||
+             string_at(current + 1L, 2L, "ES", "EP", "EB", "EL", "EY",
+                       "IB", "IL", "IN", "IE", "EI", "ER"))) {
+          add("K", "J")
+          current <- current + 2L
+          next
+        }
+        # -ger-, -gy-
+        if ((string_at(current + 1L, 2L, "ER") ||
+             get_at(current + 1L) == "Y") &&
+            !string_at(0L, 6L, "DANGER", "RANGER", "MANGER") &&
+            !string_at(current - 1L, 1L, "E", "I") &&
+            !string_at(current - 1L, 3L, "RGY", "OGY")) {
+          add("K", "J")
+          current <- current + 2L
+          next
+        }
+        # Italian, as in "biaggi"
+        if (string_at(current + 1L, 1L, "E", "I", "Y") ||
+            string_at(current - 1L, 4L, "AGGI", "OGGI")) {
+          if (string_at(0L, 4L, "VAN ", "VON ") ||
+              string_at(0L, 3L, "SCH") ||
+              string_at(current + 1L, 2L, "ET")) {
+            add("K") # obviously Germanic
+          } else if (string_at(current + 1L, 4L, "IER ")) {
+            add("J") # always soft with a French ending
+          } else {
+            add("J", "K")
+          }
+          current <- current + 2L
+          next
+        }
+        current <- current + if (get_at(current + 1L) == "G") 2L else 1L
+        add("K")
+      },
 
-           "G" = {
-             if (char_at(original_padded, current + 1) == "H") {
-               if (current > 1 && !is_vowel(original_padded, current - 1)) {
-                 primary <- paste0(primary, "K")
-                 secondary <- paste0(secondary, "K")
-                 current <- current + 2
-               } else if (current < 4) {
-                 # 'ghislane', 'ghiradelli'
-                 if (current == 1) {
-                   if (char_at(original_padded, current + 2) == "I") {
-                     primary <- paste0(primary, "J")
-                     secondary <- paste0(secondary, "J")
-                   } else {
-                     primary <- paste0(primary, "K")
-                     secondary <- paste0(secondary, "K")
-                   }
-                   current <- current + 2
-                 }
-               } else {
-                 # Parker's rule (with some further refinements)
-                 if (((current > 2) &&
-                      string_at(original_padded, current - 2, 1, "B", "H", "D", "")) ||
-                     ((current > 3) &&
-                      string_at(original_padded, current - 3, 1, "B", "H", "D", "")) ||
-                     ((current > 4) &&
-                      string_at(original_padded, current - 4, 1, "B", "H", ""))) {
-                   current <- current + 2
-                 } else {
-                   # e.g., 'laugh', 'McLaughlin', 'cough', 'gough', 'rough', 'tough'
-                   if ((current > 3) &&
-                       (char_at(original_padded, current - 1) == "U") &&
-                       string_at(original_padded, current - 3, 1, "C", "G", "L", "R", "T", "")) {
-                     primary <- paste0(primary, "F")
-                     secondary <- paste0(secondary, "F")
-                   } else if (current > 1 && char_at(original_padded, current - 1) != "I") {
-                     primary <- paste0(primary, "K")
-                     secondary <- paste0(secondary, "K")
-                   }
-                   current <- current + 2
-                 }
-               }
-             } else if (char_at(original_padded, current + 1) == "N") {
-               if (current == 2 && is_vowel(original_padded, 1) && !is_slavo_germanic(original)) {
-                 primary <- paste0(primary, "KN")
-                 secondary <- paste0(secondary, "N")
-               } else if (!string_at(original_padded, current + 2, 2, "EY", "") &&
-                          (char_at(original_padded, current + 1) != "Y") &&
-                          !is_slavo_germanic(original)) {
-                 primary <- paste0(primary, "N")
-                 secondary <- paste0(secondary, "KN")
-               } else {
-                 primary <- paste0(primary, "KN")
-                 secondary <- paste0(secondary, "KN")
-               }
-               current <- current + 2
-             } else if (string_at(original_padded, current + 1, 2, "LI", "") &&
-                        !is_slavo_germanic(original)) {
-               # 'tagliaro'
-               primary <- paste0(primary, "KL")
-               secondary <- paste0(secondary, "L")
-               current <- current + 2
-             } else if ((current == 1) &&
-                        ((char_at(original_padded, current + 1) == "Y") ||
-                         string_at(original_padded, current + 1, 2, "ES", "EP", "EB", "EL", "EY", "IB", "IL", "IN", "IE", "EI", "ER", ""))) {
-               # -ges-, -gep-, -gel-, -gie- at beginning
-               primary <- paste0(primary, "K")
-               secondary <- paste0(secondary, "J")
-               current <- current + 2
-             } else if ((string_at(original_padded, current + 1, 2, "ER", "") ||
-                         (char_at(original_padded, current + 1) == "Y")) &&
-                        !string_at(original_padded, 1, 6, "DANGER", "RANGER", "MANGER", "") &&
-                        !string_at(original_padded, current - 1, 1, "E", "I", "") &&
-                        !string_at(original_padded, current - 1, 3, "RGY", "OGY", "")) {
-               # -ger-, -gy-
-               primary <- paste0(primary, "K")
-               secondary <- paste0(secondary, "J")
-               current <- current + 2
-             } else if (string_at(original_padded, current + 1, 1, "E", "I", "Y", "") ||
-                        string_at(original_padded, current - 1, 4, "AGGI", "OGGI", "")) {
-               # Italian e.g., 'biaggi'
-               if ((string_at(original_padded, 1, 4, "VAN ", "VON ", "") ||
-                    string_at(original_padded, 1, 3, "SCH", "")) ||
-                   string_at(original_padded, current + 1, 2, "ET", "")) {
-                 primary <- paste0(primary, "K")
-                 secondary <- paste0(secondary, "K")
-               } else {
-                 # Always soft if French ending
-                 if (string_at(original_padded, current + 1, 4, "IER ", "")) {
-                   primary <- paste0(primary, "J")
-                   secondary <- paste0(secondary, "J")
-                 } else {
-                   primary <- paste0(primary, "J")
-                   secondary <- paste0(secondary, "K")
-                 }
-               }
-               current <- current + 2
-             } else {
-               if (char_at(original_padded, current + 1) == "G") {
-                 current <- current + 2
-               } else {
-                 current <- current + 1
-               }
-               primary <- paste0(primary, "K")
-               secondary <- paste0(secondary, "K")
-             }
-           },
+      "H" = {
+        # Keep only if first and before a vowel, or between two vowels.
+        if ((current == 0L || is_vowel(current - 1L)) &&
+            is_vowel(current + 1L)) {
+          add("H")
+          current <- current + 2L
+        } else {
+          current <- current + 1L # also takes care of "HH"
+        }
+      },
 
-           "H" = {
-             # Only keep if first & before vowel or between 2 vowels
-             if ((current == 1 || is_vowel(original_padded, current - 1)) &&
-                 is_vowel(original_padded, current + 1)) {
-               primary <- paste0(primary, "H")
-               secondary <- paste0(secondary, "H")
-               current <- current + 2
-             } else {
-               # Also takes care of 'HH'
-               current <- current + 1
-             }
-           },
+      "J" = {
+        # Obviously Spanish, "jose", "san jacinto"
+        if (string_at(current, 4L, "JOSE") || string_at(0L, 4L, "SAN ")) {
+          if ((current == 0L && get_at(current + 4L) == " ") ||
+              string_at(0L, 4L, "SAN ")) {
+            add("H")
+          } else {
+            add("J", "H")
+          }
+          current <- current + 1L
+          next
+        }
+        if (current == 0L && !string_at(current, 4L, "JOSE")) {
+          add("J", "A") # "Yankelovich" against "Jankelowicz"
+        } else if (is_vowel(current - 1L) &&
+                   !slavo_germanic &&
+                   get_at(current + 1L) %in% c("A", "O")) {
+          add("J", "H") # Spanish pronunciation of "bajador"
+        } else if (current == last) {
+          add("J", "")
+        } else if (!string_at(current + 1L, 1L, "L", "T", "K", "S", "N",
+                              "M", "B", "Z") &&
+                   !string_at(current - 1L, 1L, "S", "K", "L")) {
+          add("J")
+        }
+        # "JJ" could happen
+        current <- current + if (get_at(current + 1L) == "J") 2L else 1L
+      },
 
-           "J" = {
-             # Obvious Spanish, 'jose', 'san jacinto'
-             if (string_at(original_padded, current, 4, "JOSE", "") ||
-                 string_at(original_padded, 1, 4, "SAN ", "")) {
-               if (((current == 1) && (char_at(original_padded, current + 4) == " ")) ||
-                   string_at(original_padded, 1, 4, "SAN ", "")) {
-                 primary <- paste0(primary, "H")
-                 secondary <- paste0(secondary, "H")
-               } else {
-                 primary <- paste0(primary, "J")
-                 secondary <- paste0(secondary, "H")
-               }
-               current <- current + 1
-             } else if (current == 1 && !string_at(original_padded, current, 4, "JOSE", "")) {
-               # Yankelovich/Jankelowicz
-               primary <- paste0(primary, "J")
-               secondary <- paste0(secondary, "A")
-               current <- current + 1
-             } else {
-               # Spanish pronunciation of e.g. 'bajador'
-               if (is_vowel(original_padded, current - 1) &&
-                   !is_slavo_germanic(original) &&
-                   (char_at(original_padded, current + 1) == "A" ||
-                    char_at(original_padded, current + 1) == "O")) {
-                 primary <- paste0(primary, "J")
-                 secondary <- paste0(secondary, "H")
-               } else if (current == last) {
-                 primary <- paste0(primary, "J")
-                 secondary <- paste0(secondary, "")
-                 current <- current + 1
-               } else if (!string_at(original_padded, current + 1, 1,
-                                     "L", "T", "K", "S", "N", "M", "B", "Z", "") &&
-                          !string_at(original_padded, current - 1, 1, "S", "K", "L", "")) {
-                 primary <- paste0(primary, "J")
-                 secondary <- paste0(secondary, "J")
-                 current <- current + 1
-               } else {
-                 current <- current + 1
-               }
-             }
+      "K" = {
+        current <- current + if (get_at(current + 1L) == "K") 2L else 1L
+        add("K")
+      },
 
-             if (char_at(original_padded, current) == "J") {
-               # It could happen!
-               current <- current + 1
-             }
-           },
+      "L" = {
+        if (get_at(current + 1L) == "L") {
+          # Spanish, as in "cabrillo", "gallegos"
+          if ((current == length - 3L &&
+               string_at(current - 1L, 4L, "ILLO", "ILLA", "ALLE")) ||
+              ((string_at(last - 1L, 2L, "AS", "OS") ||
+                string_at(last, 1L, "A", "O")) &&
+               string_at(current - 1L, 4L, "ALLE"))) {
+            add("L", "")
+            current <- current + 2L
+            next
+          }
+          current <- current + 2L
+        } else {
+          current <- current + 1L
+        }
+        add("L")
+      },
 
-           "K" = {
-             if (char_at(original_padded, current + 1) == "K") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-             primary <- paste0(primary, "K")
-             secondary <- paste0(secondary, "K")
-           },
+      "M" = {
+        if ((string_at(current - 1L, 3L, "UMB") &&
+             (current + 1L == last ||
+              string_at(current + 2L, 2L, "ER"))) ||  # "dumb", "thumb"
+            get_at(current + 1L) == "M") {
+          current <- current + 2L
+        } else {
+          current <- current + 1L
+        }
+        add("M")
+      },
 
-           "L" = {
-             if (char_at(original_padded, current + 1) == "L") {
-               # Spanish e.g. 'cabrillo', 'gallegos'
-               if (((current == (length - 2)) &&
-                    string_at(original_padded, current - 1, 4, "ILLO", "ILLA", "ALLE", "")) ||
-                   ((string_at(original_padded, last - 1, 2, "AS", "OS", "") ||
-                     string_at(original_padded, last, 1, "A", "O", "")) &&
-                    string_at(original_padded, current - 1, 4, "ALLE", ""))) {
-                 primary <- paste0(primary, "L")
-                 secondary <- paste0(secondary, "")
-                 current <- current + 2
-               } else {
-                 current <- current + 2
-               }
-             } else {
-               current <- current + 1
-             }
-             primary <- paste0(primary, "L")
-             secondary <- paste0(secondary, "L")
-           },
+      "N" = {
+        current <- current + if (get_at(current + 1L) == "N") 2L else 1L
+        add("N")
+      },
 
-           "M" = {
-             if ((string_at(original_padded, current - 1, 3, "UMB", "") &&
-                  ((current + 1) == last ||
-                   string_at(original_padded, current + 2, 2, "ER", ""))) ||
-                 # 'dumb', 'thumb'
-                 (char_at(original_padded, current + 1) == "M")) {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-             primary <- paste0(primary, "M")
-             secondary <- paste0(secondary, "M")
-           },
+      "NTILDE" = {
+        current <- current + 1L
+        add("N")
+      },
 
-           "N" = {
-             if (char_at(original_padded, current + 1) == "N") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-             primary <- paste0(primary, "N")
-             secondary <- paste0(secondary, "N")
-           },
+      "P" = {
+        if (get_at(current + 1L) == "H") {
+          add("F")
+          current <- current + 2L
+          next
+        }
+        # Also "campbell", "raspberry"
+        if (string_at(current + 1L, 1L, "P", "B")) {
+          current <- current + 2L
+        } else {
+          current <- current + 1L
+        }
+        add("P")
+      },
 
-           "P" = {
-             if (char_at(original_padded, current + 1) == "H") {
-               primary <- paste0(primary, "F")
-               secondary <- paste0(secondary, "F")
-               current <- current + 2
-             } else {
-               # Also account for "campbell", "raspberry"
-               if (string_at(original_padded, current + 1, 1, "P", "B", "")) {
-                 current <- current + 2
-               } else {
-                 current <- current + 1
-               }
-               primary <- paste0(primary, "P")
-               secondary <- paste0(secondary, "P")
-             }
-           },
+      "Q" = {
+        current <- current + if (get_at(current + 1L) == "Q") 2L else 1L
+        add("K")
+      },
 
-           "Q" = {
-             if (char_at(original_padded, current + 1) == "Q") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-             primary <- paste0(primary, "K")
-             secondary <- paste0(secondary, "K")
-           },
+      "R" = {
+        # French, as in "rogier", but not "hochmeier"
+        if (current == last &&
+            !slavo_germanic &&
+            string_at(current - 2L, 2L, "IE") &&
+            !string_at(current - 4L, 2L, "ME", "MA")) {
+          add("", "R")
+        } else {
+          add("R")
+        }
+        current <- current + if (get_at(current + 1L) == "R") 2L else 1L
+      },
 
-           "R" = {
-             # French e.g. 'rogier', but exclude 'hochmeier'
-             if (current == last &&
-                 !is_slavo_germanic(original) &&
-                 string_at(original_padded, current - 2, 2, "IE", "") &&
-                 !string_at(original_padded, current - 4, 2, "ME", "MA", "")) {
-               primary <- paste0(primary, "")
-               secondary <- paste0(secondary, "R")
-             } else {
-               primary <- paste0(primary, "R")
-               secondary <- paste0(secondary, "R")
-             }
+      "S" = {
+        # "island", "isle", "carlisle", "carlysle"
+        if (string_at(current - 1L, 3L, "ISL", "YSL")) {
+          current <- current + 1L
+          next
+        }
+        # "sugar-"
+        if (current == 0L && string_at(current, 5L, "SUGAR")) {
+          add("X", "S")
+          current <- current + 1L
+          next
+        }
+        if (string_at(current, 2L, "SH")) {
+          # Germanic
+          if (string_at(current + 1L, 4L, "HEIM", "HOEK", "HOLM", "HOLZ")) {
+            add("S")
+          } else {
+            add("X")
+          }
+          current <- current + 2L
+          next
+        }
+        # Italian and Armenian
+        if (string_at(current, 3L, "SIO", "SIA") ||
+            string_at(current, 4L, "SIAN")) {
+          if (!slavo_germanic) add("S", "X") else add("S")
+          current <- current + 3L
+          next
+        }
+        # German and anglicised forms, so "smith" matches "schmidt" and
+        # "snider" matches "schneider". Also -sz- in Slavic languages,
+        # though in Hungarian it is pronounced S.
+        if ((current == 0L &&
+             string_at(current + 1L, 1L, "M", "N", "L", "W")) ||
+            string_at(current + 1L, 1L, "Z")) {
+          add("S", "X")
+          current <- current + if (string_at(current + 1L, 1L, "Z")) 2L else 1L
+          next
+        }
+        if (string_at(current, 2L, "SC")) {
+          # Schlesinger's rule
+          if (get_at(current + 2L) == "H") {
+            # Dutch origin, as in "school", "schooner"
+            if (string_at(current + 3L, 2L, "OO", "ER", "EN", "UY", "ED",
+                          "EM")) {
+              # "schermerhorn", "schenker"
+              if (string_at(current + 3L, 2L, "ER", "EN")) {
+                add("X", "SK")
+              } else {
+                add("SK")
+              }
+            } else if (current == 0L && !is_vowel(3L) &&
+                       get_at(3L) != "W") {
+              add("X", "S")
+            } else {
+              add("X")
+            }
+            current <- current + 3L
+            next
+          }
+          if (string_at(current + 2L, 1L, "I", "E", "Y")) {
+            add("S")
+          } else {
+            add("SK")
+          }
+          current <- current + 3L
+          next
+        }
+        # French, as in "resnais", "artois"
+        if (current == last && string_at(current - 2L, 2L, "AI", "OI")) {
+          add("", "S")
+        } else {
+          add("S")
+        }
+        current <- current +
+          if (string_at(current + 1L, 1L, "S", "Z")) 2L else 1L
+      },
 
-             if (char_at(original_padded, current + 1) == "R") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-           },
+      "T" = {
+        if (string_at(current, 4L, "TION")) {
+          add("X")
+          current <- current + 3L
+          next
+        }
+        if (string_at(current, 3L, "TIA", "TCH")) {
+          add("X")
+          current <- current + 3L
+          next
+        }
+        if (string_at(current, 2L, "TH") || string_at(current, 3L, "TTH")) {
+          # "thomas", "thames", or Germanic
+          if (string_at(current + 2L, 2L, "OM", "AM") ||
+              string_at(0L, 4L, "VAN ", "VON ") ||
+              string_at(0L, 3L, "SCH")) {
+            add("T")
+          } else {
+            add("0", "T") # yes, a zero, for the "th" sound
+          }
+          current <- current + 2L
+          next
+        }
+        current <- current +
+          if (string_at(current + 1L, 1L, "T", "D")) 2L else 1L
+        add("T")
+      },
 
-           "S" = {
-             # Special cases 'island', 'isle', 'carlisle', 'carlysle'
-             if (string_at(original_padded, current - 1, 3, "ISL", "YSL", "")) {
-               current <- current + 1
-             }
-             # Special case 'sugar-'
-             else if (current == 1 && string_at(original_padded, current, 5, "SUGAR", "")) {
-               primary <- paste0(primary, "X")
-               secondary <- paste0(secondary, "S")
-               current <- current + 1
-             }
-             else if (string_at(original_padded, current, 2, "SH", "")) {
-               # Germanic
-               if (string_at(original_padded, current + 1, 4, "HEIM", "HOEK", "HOLM", "HOLZ", "")) {
-                 primary <- paste0(primary, "S")
-                 secondary <- paste0(secondary, "S")
-               } else {
-                 primary <- paste0(primary, "X")
-                 secondary <- paste0(secondary, "X")
-               }
-               current <- current + 2
-             }
-             # Italian & Armenian
-             else if (string_at(original_padded, current, 3, "SIO", "SIA", "") ||
-                      string_at(original_padded, current, 4, "SIAN", "")) {
-               if (!is_slavo_germanic(original)) {
-                 primary <- paste0(primary, "S")
-                 secondary <- paste0(secondary, "X")
-               } else {
-                 primary <- paste0(primary, "S")
-                 secondary <- paste0(secondary, "S")
-               }
-               current <- current + 3
-             }
-             # German & anglicisations
-             else if ((current == 1 &&
-                       string_at(original_padded, current + 1, 1, "M", "N", "L", "W", "")) ||
-                      string_at(original_padded, current + 1, 1, "Z", "")) {
-               primary <- paste0(primary, "S")
-               secondary <- paste0(secondary, "X")
-               if (string_at(original_padded, current + 1, 1, "Z", "")) {
-                 current <- current + 2
-               } else {
-                 current <- current + 1
-               }
-             }
-             else if (string_at(original_padded, current, 2, "SC", "")) {
-               # Schlesinger's rule
-               if (char_at(original_padded, current + 2) == "H") {
-                 # Dutch origin, e.g. 'school', 'schooner'
-                 if (string_at(original_padded, current + 3, 2,
-                               "OO", "ER", "EN", "UY", "ED", "EM", "")) {
-                   # 'schermerhorn', 'schenker'
-                   if (string_at(original_padded, current + 3, 2, "ER", "EN", "")) {
-                     primary <- paste0(primary, "X")
-                     secondary <- paste0(secondary, "SK")
-                   } else {
-                     primary <- paste0(primary, "SK")
-                     secondary <- paste0(secondary, "SK")
-                   }
-                   current <- current + 3
-                 } else {
-                   if (current == 1 && !is_vowel(original_padded, 4) &&
-                       char_at(original_padded, 4) != "W") {
-                     primary <- paste0(primary, "X")
-                     secondary <- paste0(secondary, "S")
-                   } else {
-                     primary <- paste0(primary, "X")
-                     secondary <- paste0(secondary, "X")
-                   }
-                   current <- current + 3
-                 }
-               } else if (string_at(original_padded, current + 2, 1, "I", "E", "Y", "")) {
-                 primary <- paste0(primary, "S")
-                 secondary <- paste0(secondary, "S")
-                 current <- current + 3
-               } else {
-                 primary <- paste0(primary, "SK")
-                 secondary <- paste0(secondary, "SK")
-                 current <- current + 3
-               }
-             }
-             else {
-               # French e.g. 'resnais', 'artois'
-               if (current == last &&
-                   string_at(original_padded, current - 2, 2, "AI", "OI", "")) {
-                 primary <- paste0(primary, "")
-                 secondary <- paste0(secondary, "S")
-               } else {
-                 primary <- paste0(primary, "S")
-                 secondary <- paste0(secondary, "S")
-               }
+      "V" = {
+        current <- current + if (get_at(current + 1L) == "V") 2L else 1L
+        add("F")
+      },
 
-               if (string_at(original_padded, current + 1, 1, "S", "Z", "")) {
-                 current <- current + 2
-               } else {
-                 current <- current + 1
-               }
-             }
-           },
+      "W" = {
+        # Can also be in the middle of a word
+        if (string_at(current, 2L, "WR")) {
+          add("R")
+          current <- current + 2L
+          next
+        }
+        if (current == 0L &&
+            (is_vowel(current + 1L) || string_at(current, 2L, "WH"))) {
+          if (is_vowel(current + 1L)) {
+            add("A", "F") # "Wasserman" should match "Vasserman"
+          } else {
+            add("A")      # "Uomo" should match "Womo"
+          }
+        }
+        # "Arnow" should match "Arnoff"
+        if ((current == last && is_vowel(current - 1L)) ||
+            string_at(current - 1L, 5L, "EWSKI", "EWSKY", "OWSKI",
+                      "OWSKY") ||
+            string_at(0L, 3L, "SCH")) {
+          add("", "F")
+          current <- current + 1L
+          next
+        }
+        # Polish, as in "filipowicz"
+        if (string_at(current, 4L, "WICZ", "WITZ")) {
+          add("TS", "FX")
+          current <- current + 4L
+          next
+        }
+        current <- current + 1L # otherwise skip it
+      },
 
-           "T" = {
-             if (string_at(original_padded, current, 4, "TION", "")) {
-               primary <- paste0(primary, "X")
-               secondary <- paste0(secondary, "X")
-               current <- current + 3
-             }
-             else if (string_at(original_padded, current, 3, "TIA", "TCH", "")) {
-               primary <- paste0(primary, "X")
-               secondary <- paste0(secondary, "X")
-               current <- current + 3
-             }
-             else if (string_at(original_padded, current, 2, "TH", "") ||
-                      string_at(original_padded, current, 3, "TTH", "")) {
-               # Special case 'thomas', 'thames' or Germanic
-               if (string_at(original_padded, current + 2, 2, "OM", "AM", "") ||
-                   string_at(original_padded, 1, 4, "VAN ", "VON ", "") ||
-                   string_at(original_padded, 1, 3, "SCH", "")) {
-                 primary <- paste0(primary, "T")
-                 secondary <- paste0(secondary, "T")
-               } else {
-                 primary <- paste0(primary, "0")  # yes, zero
-                 secondary <- paste0(secondary, "T")
-               }
-               current <- current + 2
-             } else {
-               if (string_at(original_padded, current + 1, 1, "T", "D", "")) {
-                 current <- current + 2
-               } else {
-                 current <- current + 1
-               }
-               primary <- paste0(primary, "T")
-               secondary <- paste0(secondary, "T")
-             }
-           },
+      "X" = {
+        # French, as in "breaux"
+        if (!(current == last &&
+              (string_at(current - 3L, 3L, "IAU", "EAU") ||
+               string_at(current - 2L, 2L, "AU", "OU")))) {
+          add("KS")
+        }
+        current <- current +
+          if (string_at(current + 1L, 1L, "C", "X")) 2L else 1L
+      },
 
-           "V" = {
-             if (char_at(original_padded, current + 1) == "V") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-             primary <- paste0(primary, "F")
-             secondary <- paste0(secondary, "F")
-           },
+      "Z" = {
+        # Chinese pinyin, as in "zhao"
+        if (get_at(current + 1L) == "H") {
+          add("J")
+          current <- current + 2L
+          next
+        }
+        if (string_at(current + 1L, 2L, "ZO", "ZI", "ZA") ||
+            (slavo_germanic && current > 0L &&
+             get_at(current - 1L) != "T")) {
+          add("S", "TS")
+        } else {
+          add("S")
+        }
+        current <- current + if (get_at(current + 1L) == "Z") 2L else 1L
+      },
 
-           "W" = {
-             # Can also be in middle of word
-             if (string_at(original_padded, current, 2, "WR", "")) {
-               primary <- paste0(primary, "R")
-               secondary <- paste0(secondary, "R")
-               current <- current + 2
-             } else if (current == 1 &&
-                        (is_vowel(original_padded, current + 1) ||
-                         string_at(original_padded, current, 2, "WH", ""))) {
-               # Wasserman should match Vasserman
-               if (is_vowel(original_padded, current + 1)) {
-                 primary <- paste0(primary, "A")
-                 secondary <- paste0(secondary, "F")
-               } else {
-                 # Need Uomo to match Womo
-                 primary <- paste0(primary, "A")
-                 secondary <- paste0(secondary, "A")
-               }
-               current <- current + 1
-             } else if ((current == last && is_vowel(original_padded, current - 1)) ||
-                        string_at(original_padded, current - 1, 5,
-                                  "EWSKI", "EWSKY", "OWSKI", "OWSKY", "") ||
-                        string_at(original_padded, 1, 3, "SCH", "")) {
-               # Arnow should match Arnoff
-               primary <- paste0(primary, "")
-               secondary <- paste0(secondary, "F")
-               current <- current + 1
-             } else if (string_at(original_padded, current, 4, "WICZ", "WITZ", "")) {
-               # Polish e.g. 'filipowicz'
-               primary <- paste0(primary, "TS")
-               secondary <- paste0(secondary, "FX")
-               current <- current + 4
-             } else {
-               # Else skip it
-               current <- current + 1
-             }
-           },
-
-           "X" = {
-             # French e.g. breaux
-             if (!((current == last) &&
-                   (string_at(original_padded, current - 3, 3, "IAU", "EAU", "") ||
-                    string_at(original_padded, current - 2, 2, "AU", "OU", "")))) {
-               primary <- paste0(primary, "KS")
-               secondary <- paste0(secondary, "KS")
-             }
-
-             if (string_at(original_padded, current + 1, 1, "C", "X", "")) {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-           },
-
-           "Z" = {
-             # Chinese pinyin e.g. 'zhao'
-             if (char_at(original_padded, current + 1) == "H") {
-               primary <- paste0(primary, "J")
-               secondary <- paste0(secondary, "J")
-               current <- current + 2
-             } else if (string_at(original_padded, current + 1, 2, "ZO", "ZI", "ZA", "") ||
-                        (is_slavo_germanic(original) &&
-                         (current > 1 && char_at(original_padded, current - 1) != "T"))) {
-               primary <- paste0(primary, "S")
-               secondary <- paste0(secondary, "TS")
-             } else {
-               primary <- paste0(primary, "S")
-               secondary <- paste0(secondary, "S")
-             }
-
-             if (char_at(original_padded, current + 1) == "Z") {
-               current <- current + 2
-             } else {
-               current <- current + 1
-             }
-           },
-
-           {
-             # Default case
-             current <- current + 1
-           }
+      # Anything else, including spaces
+      current <- current + 1L
     )
-    if (current == prev_current) {
-      current <- current + 1
-    }
-  }
-
-  # Trim to max_length
-  if (nchar(primary) > max_length) {
-    primary <- substr(primary, 1, max_length)
-  }
-  if (nchar(secondary) > max_length) {
-    secondary <- substr(secondary, 1, max_length)
   }
 
   c(primary, secondary)
-}
-
-# Vectorized version for multiple inputs
-#' @export
-double_metaphone_vec <- function(words) {
-  result <- lapply(words, double_metaphone)
-  primary <- sapply(result, `[`, 1)
-  secondary <- sapply(result, `[`, 2)
-  data.frame(primary = primary, secondary = secondary, stringsAsFactors = FALSE)
 }

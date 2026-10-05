@@ -1,0 +1,40 @@
+fullmetaphone copyright and credits
+===================================
+
+The package as a whole
+    Copyright (C) 2026 Anil Kumar Goyal and Atharv Tyagi.
+    Licensed under the GNU General Public License, version 3.
+
+Algorithms
+    Metaphone and Double Metaphone were designed by Lawrence Philips.
+    Metaphone was published in Computer Language 7(12), 1990.
+    Double Metaphone was published, with C++ code, in C/C++ Users
+    Journal 18(6), June 2000.
+
+R/double_metaphone.R
+    The rules are a translation into R of the C implementation of Double
+    Metaphone by Maurice Aubrey (Copyright 2000, Maurice Aubrey), which
+    is based on Lawrence Philips' C++ code and includes bug fixes by
+    Kevin Atkinson. Aubrey's code is distributed under the same terms as
+    Perl, which allow redistribution under the GNU General Public
+    License. The same C code is used in the R package 'PGRdup'
+    (Copyright ICAR-NBPGR, GPL-2 | GPL-3) by J. Aravind, J. Radhamani,
+    Kalyani Srinivasan, B. Ananda Subhash and co-authors,
+    which brought Double Metaphone to R and inspired this package.
+    Unlike that code, this version does not cut the codes to four
+    characters.
+
+R/metaphone.R
+    The rules are a translation into R of the Metaphone class in Apache
+    Commons Codec.
+    Copyright The Apache Software Foundation.
+    Licensed under the Apache License, Version 2.0, which is compatible
+    with the GNU General Public License, version 3.
+    https://www.apache.org/licenses/LICENSE-2.0
+
+tests/testthat/testdata/commons_double_metaphone.csv and the expected
+codes in tests/testthat/test-metaphone.R
+    Taken from the test suite of Apache Commons Codec
+    (DoubleMetaphone2Test.java and MetaphoneTest.java).
+    Copyright The Apache Software Foundation.
+    Licensed under the Apache License, Version 2.0.
