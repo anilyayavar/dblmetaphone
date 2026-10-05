@@ -25,7 +25,7 @@ Description: Encodes names and words as phonetic codes, so that names
     language origins. Unlike most implementations, including 'PGRdup',
     the codes are not cut to four characters, which keeps long and
     multi-part names apart. Provides metaphone(), double_metaphone() and
-    sounds_like() for record linkage, de-duplication and name search,
+    sounds_like() for record linkage, deduplication and name search,
     and includes a data set of common United States surnames.
 License: GPL-3
 URL: https://github.com/anilyayavar/dblmetaphone

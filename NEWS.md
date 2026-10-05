@@ -9,7 +9,7 @@ Atharv Tyagi.
 * New `sounds_like()` to compare two vectors of names.
 * New data set `us_surnames`, the 5000 most common surnames in the 2010
   United States Census.
-* New vignette with worked examples of de-duplication, record linkage
+* New vignette with worked examples of deduplication, record linkage
   and name search.
 * New `max_length` argument to set the code length. The default stays
   at 32 characters, as in the old version. Use `Inf` for no limit or `4`

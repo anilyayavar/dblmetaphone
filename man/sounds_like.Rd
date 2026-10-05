@@ -59,6 +59,6 @@ head(hits)
 }
 \seealso{
 [double_metaphone()], [metaphone()], and
-  `vignette("fullmetaphone")` for worked examples of de-duplication and
+  `vignette("fullmetaphone")` for worked examples of deduplication and
   record linkage.
 }

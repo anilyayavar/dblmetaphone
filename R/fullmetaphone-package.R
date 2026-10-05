@@ -19,7 +19,7 @@
 #' traditional short codes.
 #'
 #' Start with `vignette("fullmetaphone")`, which explains the algorithms
-#' and shows how to use the codes for de-duplication, record linkage and
+#' and shows how to use the codes for deduplication, record linkage and
 #' name search.
 #'
 #' @section Credits:

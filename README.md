@@ -5,7 +5,7 @@ Double Metaphone phonetic codes for R.
 
 People spell the same name in different ways. Meyer, Meier, Mayer and
 Maier are one surname. Catherine and Katherine are one first name. Exact
-comparison misses these, which makes de-duplication, record linkage and
+comparison misses these, which makes deduplication, record linkage and
 name search unreliable. Phonetic algorithms turn each name into a code
 for its sound, so that names which sound alike can be matched.
 
@@ -96,7 +96,7 @@ Missing values stay missing, accented Latin letters are read as plain
 letters, and punctuation is ignored.
 
 The vignette, `vignette("fullmetaphone")`, explains the algorithms and
-works through de-duplication, record linkage and name search, including
+works through deduplication, record linkage and name search, including
 the limits of phonetic matching.
 
 ## Validation
